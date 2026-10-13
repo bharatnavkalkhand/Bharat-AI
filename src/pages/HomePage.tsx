@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Film, Plus, Clock, AlertCircle, Swords, Heart } from "lucide-react";
+import { Film, Plus, Clock, AlertCircle, Swords, Heart, Pencil } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { cn } from "@/lib/utils";
 
@@ -77,33 +77,45 @@ export function HomePage() {
           <ul className="space-y-3">
             {movies.map((movie) => (
               <li key={movie.id}>
-                <Link
-                  to={`/movie/${movie.id}`}
-                  onClick={() => setCurrentMovie(movie.id)}
-                  className="block rounded-2xl border border-border bg-card p-4 transition hover:border-accent/40 active:scale-[0.99]"
-                >
-                  <h3 className="truncate font-medium">{movie.title}</h3>
-                  {movie.synopsis && (
-                    <p className="mt-1 line-clamp-2 text-sm text-muted">
-                      {movie.synopsis}
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5" />
-                      {movie.targetDuration === "5min" ? "5 min" : "10 min"}
-                    </span>
-                    <span>
-                      {movie.characters.length} character
-                      {movie.characters.length !== 1 ? "s" : ""}
-                    </span>
-                    <span>
-                      {movie.scenes.length} scene
-                      {movie.scenes.length !== 1 ? "s" : ""}
-                    </span>
-                    <span className="capitalize">{movie.status}</span>
+                <div className="rounded-2xl border border-border bg-card p-4 transition hover:border-accent/40">
+                  <Link
+                    to={`/movie/${movie.id}`}
+                    onClick={() => setCurrentMovie(movie.id)}
+                    className="block active:scale-[0.99]"
+                  >
+                    <h3 className="truncate font-medium">{movie.title}</h3>
+                    {movie.synopsis && (
+                      <p className="mt-1 line-clamp-2 text-sm text-muted">
+                        {movie.synopsis}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        {movie.targetDuration === "5min" ? "5 min" : "10 min"}
+                      </span>
+                      <span>
+                        {movie.characters.length} character
+                        {movie.characters.length !== 1 ? "s" : ""}
+                      </span>
+                      <span>
+                        {movie.scenes.length} scene
+                        {movie.scenes.length !== 1 ? "s" : ""}
+                      </span>
+                      <span className="capitalize">{movie.status}</span>
+                    </div>
+                  </Link>
+                  <div className="mt-3 flex gap-2 border-t border-border pt-3">
+                    <Link
+                      to={`/movie/${movie.id}`}
+                      onClick={() => setCurrentMovie(movie.id)}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2 text-xs font-medium text-muted hover:border-accent hover:text-accent"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit movie
+                    </Link>
                   </div>
-                </Link>
+                </div>
               </li>
             ))}
           </ul>
