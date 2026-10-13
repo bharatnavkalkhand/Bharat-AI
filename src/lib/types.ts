@@ -73,6 +73,9 @@ export const SceneSchema = z.object({
   audioUrl: z.string().optional(),
   errorMessage: z.string().optional(),
   characterIds: z.array(z.string()).default([]),
+  /** Dual-panel art (data URLs) — Flixier-style layout */
+  imageTopLocal: z.string().optional(),
+  imageBottomLocal: z.string().optional(),
 });
 export type Scene = z.infer<typeof SceneSchema>;
 
