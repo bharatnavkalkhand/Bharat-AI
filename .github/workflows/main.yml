@@ -1,35 +1,18 @@
-#!/bin/bash
+name: AI Code Review with xAI
 
-# Bharat AI Cinematic Studio - Automated Setup Script
-# This script generates the complete project structure
+on:
+  pull_request:
+    types: [opened, synchronize]
 
-set -e
+permissions:
+  pull-requests: write
 
-PROJECT_NAME="bharat-ai-cinematic-studio"
-ROOT_DIR="$PWD/$PROJECT_NAME"
-
-echo "🚀 Creating Bharat AI Cinematic Studio project..."
-echo "📁 Project directory: $ROOT_DIR"
-
-# Create directory structure
-mkdir -p "$ROOT_DIR/app/login"
-mkdir -p "$ROOT_DIR/app/signup"
-mkdir -p "$ROOT_DIR/app/dashboard"
-mkdir -p "$ROOT_DIR/app/projects/[projectId]/script"
-mkdir -p "$ROOT_DIR/app/projects/[projectId]/scenes"
-mkdir -p "$ROOT_DIR/app/projects/[projectId]/characters"
-mkdir -p "$ROOT_DIR/app/projects/[projectId]/voices"
-mkdir -p "$ROOT_DIR/app/projects/[projectId]/render"
-mkdir -p "$ROOT_DIR/app/projects/[projectId]/review"
-mkdir -p "$ROOT_DIR/server/routes"
-mkdir -p "$ROOT_DIR/prisma"
-
-echo "✅ Directories created"
-
-# Root level files
-echo "📝 Creating root configuration files..."
-
-cat > "$ROOT_DIR/README.md" <<'EOF'
-# Bharat AI Cinematic Studio
-
-A zero-credit AI cinematic video generation
+jobs:
+  review:
+    name: Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Review
+        uses: tarmojussila/xai-code-review@v0.1.1
+        with:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
