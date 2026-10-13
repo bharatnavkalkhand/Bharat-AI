@@ -137,7 +137,6 @@ export function MovieWorkspacePage() {
     if (!movieId || !movie) return;
     setGenerating(true);
     setGenMessage("");
-    // Small delay so UI can show loading state
     window.setTimeout(() => {
       try {
         const result = generateScript({
@@ -184,24 +183,28 @@ export function MovieWorkspacePage() {
   }
 
   function downloadScript() {
-    const text =
-      scriptPreview?.fullScriptText ??
-      [
-        `TITLE: ${movie.title}`,
-        `"",
-        ...(movie.synopsis ? [movie.synopsis, ""] : []),
-        ...movie.scenes
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map(
-            (s, i) =>
-              `--- SCENE ${i + 1}: ${s.title} [${s.mood}] ---\n${s.dialogue ?? ""}\nVISUAL: ${s.visualPrompt ?? ""}`,
-          ),
-      ].join("\n");
-    downloadTextFile(
-      `${movie.title.replace(/[^\w\u0900-\u097F]+/g, "_") || "script"}.txt`,
-      text,
-    );
+    let text = scriptPreview?.fullScriptText;
+    if (!text) {
+      const parts: string[] = [`TITLE: ${movie.title}`, ""];
+      if (movie.synopsis) {
+        parts.push(movie.synopsis, "");
+      }
+      movie.scenes
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .forEach((s, i) => {
+          parts.push(
+            `--- SCENE ${i + 1}: ${s.title} [${s.mood}] ---`,
+            s.dialogue ?? "",
+            `VISUAL: ${s.visualPrompt ?? ""}`,
+            "",
+          );
+        });
+      text = parts.join("\n");
+    }
+    const safe =
+      movie.title.replace(/[^\w\u0900-\u097F]+/g, "_") || "script";
+    downloadTextFile(`${safe}.txt`, text);
   }
 
   function onAddCharacter() {
@@ -576,108 +579,45 @@ export function MovieWorkspacePage() {
           </div>
           <ul className="space-y-3">
             {movie.characters.map((c) => (
-              <li
-                key={c.id}
-                className="rounded-2xl border border-border bg-card p-4"
-              >
+              <li key={c.id} className="rounded-2xl border border-border bg-card p-4">
                 {editingCharId === c.id ? (
                   <div className="space-y-3">
-                    <input
-                      value={ecName}
-                      onChange={(e) => setEcName(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                    />
-                    <input
-                      value={ecRole}
-                      onChange={(e) => setEcRole(e.target.value)}
-                      placeholder="Role"
-                      className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                    />
-                    <textarea
-                      value={ecAppearance}
-                      onChange={(e) => setEcAppearance(e.target.value)}
-                      placeholder="Appearance"
-                      rows={2}
-                      className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                    />
+                    <input value={ecName} onChange={(e) => setEcName(e.target.value)} className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
+                    <input value={ecRole} onChange={(e) => setEcRole(e.target.value)} placeholder="Role" className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
+                    <textarea value={ecAppearance} onChange={(e) => setEcAppearance(e.target.value)} placeholder="Appearance" rows={2} className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={saveCharacterEdit}
-                        className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"
-                      >
-                        <Check className="h-4 w-4" /> Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingCharId(null)}
-                        className="rounded-xl border border-border px-3 py-2 text-sm text-muted"
-                      >
-                        Cancel
-                      </button>
+                      <button type="button" onClick={saveCharacterEdit} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"><Check className="h-4 w-4" /> Save</button>
+                      <button type="button" onClick={() => setEditingCharId(null)} className="rounded-xl border border-border px-3 py-2 text-sm text-muted">Cancel</button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-start gap-3">
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border bg-bg">
                       {c.referenceImageLocal ? (
-                        <img
-                          src={c.referenceImageLocal}
-                          alt={c.name}
-                          className="h-full w-full object-cover"
-                        />
+                        <img src={c.referenceImageLocal} alt={c.name} className="h-full w-full object-cover" />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-muted">
-                          Face
-                        </div>
+                        <div className="flex h-full items-center justify-center text-xs text-muted">Face</div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{c.name}</p>
                       {c.role && <p className="text-xs text-muted">{c.role}</p>}
-                      {c.appearance && (
-                        <p className="mt-1 line-clamp-2 text-xs text-muted">
-                          {c.appearance}
-                        </p>
-                      )}
+                      {c.appearance && <p className="mt-1 line-clamp-2 text-xs text-muted">{c.appearance}</p>}
                       <label className="mt-2 inline-block cursor-pointer text-xs text-accent">
                         Upload reference face
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            onReferenceImage(c.id, e.target.files?.[0] ?? null)
-                          }
-                        />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => onReferenceImage(c.id, e.target.files?.[0] ?? null)} />
                       </label>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEditCharacter(c)}
-                        className="text-muted hover:text-accent"
-                        aria-label="Edit character"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeCharacter(movie.id, c.id)}
-                        className="text-muted hover:text-red-400"
-                        aria-label="Remove character"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <button type="button" onClick={() => startEditCharacter(c)} className="text-muted hover:text-accent" aria-label="Edit character"><Pencil className="h-4 w-4" /></button>
+                      <button type="button" onClick={() => removeCharacter(movie.id, c.id)} className="text-muted hover:text-red-400" aria-label="Remove character"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </div>
                 )}
               </li>
             ))}
             {movie.characters.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted">
-                No cast yet. Generate a script or add characters manually.
-              </p>
+              <p className="py-8 text-center text-sm text-muted">No cast yet. Generate a script or add characters manually.</p>
             )}
           </ul>
         </section>
@@ -688,131 +628,46 @@ export function MovieWorkspacePage() {
           <div className="rounded-2xl border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-medium">Add scene</h2>
             <div className="space-y-3">
-              <input
-                value={sceneTitle}
-                onChange={(e) => setSceneTitle(e.target.value)}
-                placeholder="Scene title"
-                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
-              />
+              <input value={sceneTitle} onChange={(e) => setSceneTitle(e.target.value)} placeholder="Scene title" className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent" />
               <div>
                 <p className="mb-2 text-xs text-muted">Mood / effect type</p>
                 <div className="flex flex-wrap gap-2">
                   {MOODS.map((m) => {
                     const Icon = m.icon;
                     return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setSceneMood(m.id)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
-                          sceneMood === m.id
-                            ? "border-accent bg-accent/15 text-accent"
-                            : "border-border text-muted",
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        {m.label}
+                      <button key={m.id} type="button" onClick={() => setSceneMood(m.id)} className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium", sceneMood === m.id ? "border-accent bg-accent/15 text-accent" : "border-border text-muted")}>
+                        <Icon className="h-3.5 w-3.5" />{m.label}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <textarea
-                value={sceneNotes}
-                onChange={(e) => setSceneNotes(e.target.value)}
-                placeholder={
-                  sceneMood === "fight"
-                    ? "Fight notes: sword clash, kick, dodge…"
-                    : sceneMood === "romance"
-                      ? "Romance notes: hand hold, soft smile, embrace…"
-                      : "Gesture / action notes"
-                }
-                rows={2}
-                className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
-              />
-              <textarea
-                value={sceneDialogue}
-                onChange={(e) => setSceneDialogue(e.target.value)}
-                placeholder="Dialogue or narration (optional)"
-                rows={3}
-                className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
-              />
-              <button
-                type="button"
-                onClick={onAddScene}
-                disabled={!sceneTitle.trim()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                <Plus className="h-4 w-4" />
-                Add scene
-              </button>
+              <textarea value={sceneNotes} onChange={(e) => setSceneNotes(e.target.value)} placeholder={sceneMood === "fight" ? "Fight notes…" : sceneMood === "romance" ? "Romance notes…" : "Gesture notes"} rows={2} className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent" />
+              <textarea value={sceneDialogue} onChange={(e) => setSceneDialogue(e.target.value)} placeholder="Dialogue or narration" rows={3} className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent" />
+              <button type="button" onClick={onAddScene} disabled={!sceneTitle.trim()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"><Plus className="h-4 w-4" />Add scene</button>
             </div>
           </div>
-
           <ul className="space-y-3">
             {sortedScenes.map((sc, idx) => (
-              <li
-                key={sc.id}
-                className="rounded-2xl border border-border bg-card p-4"
-              >
+              <li key={sc.id} className="rounded-2xl border border-border bg-card p-4">
                 {editingSceneId === sc.id ? (
                   <div className="space-y-3">
-                    <input
-                      value={esTitle}
-                      onChange={(e) => setEsTitle(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                    />
+                    <input value={esTitle} onChange={(e) => setEsTitle(e.target.value)} className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
                     <div className="flex flex-wrap gap-2">
                       {MOODS.map((m) => {
                         const Icon = m.icon;
                         return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setEsMood(m.id)}
-                            className={cn(
-                              "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
-                              esMood === m.id
-                                ? "border-accent bg-accent/15 text-accent"
-                                : "border-border text-muted",
-                            )}
-                          >
-                            <Icon className="h-3 w-3" />
-                            {m.label}
+                          <button key={m.id} type="button" onClick={() => setEsMood(m.id)} className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", esMood === m.id ? "border-accent bg-accent/15 text-accent" : "border-border text-muted")}>
+                            <Icon className="h-3 w-3" />{m.label}
                           </button>
                         );
                       })}
                     </div>
-                    <textarea
-                      value={esNotes}
-                      onChange={(e) => setEsNotes(e.target.value)}
-                      placeholder="Gesture / action notes"
-                      rows={2}
-                      className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                    />
-                    <textarea
-                      value={esDialogue}
-                      onChange={(e) => setEsDialogue(e.target.value)}
-                      placeholder="Dialogue"
-                      rows={3}
-                      className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                    />
+                    <textarea value={esNotes} onChange={(e) => setEsNotes(e.target.value)} rows={2} className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
+                    <textarea value={esDialogue} onChange={(e) => setEsDialogue(e.target.value)} rows={3} className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={saveSceneEdit}
-                        className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"
-                      >
-                        <Check className="h-4 w-4" /> Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingSceneId(null)}
-                        className="rounded-xl border border-border px-3 py-2 text-sm text-muted"
-                      >
-                        Cancel
-                      </button>
+                      <button type="button" onClick={saveSceneEdit} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"><Check className="h-4 w-4" />Save</button>
+                      <button type="button" onClick={() => setEditingSceneId(null)} className="rounded-xl border border-border px-3 py-2 text-sm text-muted">Cancel</button>
                     </div>
                   </div>
                 ) : (
@@ -821,60 +676,25 @@ export function MovieWorkspacePage() {
                       <div>
                         <p className="text-xs text-muted">Scene {idx + 1}</p>
                         <p className="font-medium">{sc.title}</p>
-                        <span className="mt-1 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs capitalize text-accent">
-                          {sc.mood}
-                        </span>
-                        {sc.gestureNotes && (
-                          <p className="mt-2 text-sm text-muted">
-                            {sc.gestureNotes}
-                          </p>
-                        )}
-                        {sc.dialogue && (
-                          <p className="mt-1 whitespace-pre-wrap text-sm">
-                            {sc.dialogue}
-                          </p>
-                        )}
+                        <span className="mt-1 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs capitalize text-accent">{sc.mood}</span>
+                        {sc.gestureNotes && <p className="mt-2 text-sm text-muted">{sc.gestureNotes}</p>}
+                        {sc.dialogue && <p className="mt-1 whitespace-pre-wrap text-sm">{sc.dialogue}</p>}
                       </div>
                       <div className="flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEditScene(sc)}
-                          className="text-muted hover:text-accent"
-                          aria-label="Edit scene"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeScene(movie.id, sc.id)}
-                          className="text-muted hover:text-red-400"
-                          aria-label="Remove scene"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <button type="button" onClick={() => startEditScene(sc)} className="text-muted hover:text-accent" aria-label="Edit scene"><Pencil className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => removeScene(movie.id, sc.id)} className="text-muted hover:text-red-400" aria-label="Remove scene"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                     <div className="mt-3">
                       <label className="text-xs text-muted">Visual prompt</label>
-                      <input
-                        value={sc.visualPrompt ?? ""}
-                        onChange={(e) =>
-                          updateScene(movie.id, sc.id, {
-                            visualPrompt: e.target.value,
-                          })
-                        }
-                        placeholder="Describe the shot…"
-                        className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
+                      <input value={sc.visualPrompt ?? ""} onChange={(e) => updateScene(movie.id, sc.id, { visualPrompt: e.target.value })} placeholder="Describe the shot…" className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
                     </div>
                   </>
                 )}
               </li>
             ))}
             {movie.scenes.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted">
-                No scenes yet. Use Script → Generate, or add scenes here.
-              </p>
+              <p className="py-8 text-center text-sm text-muted">No scenes yet. Use Script → Generate, or add scenes here.</p>
             )}
           </ul>
         </section>
