@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Film,
   Plus,
@@ -11,6 +11,7 @@ import {
   Clapperboard,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
+import { BHARAT_TEMPLATES } from "@/lib/bharat-templates";
 import type { Language } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export function HomePage() {
   const movies = useMovieStore((s) => s.movies);
   const setCurrentMovie = useMovieStore((s) => s.setCurrentMovie);
   const [uiLang, setUiLang] = useState<Language>("hi");
+  const navigate = useNavigate();
 
   return (
     <main className="mx-auto max-w-lg px-4 pb-24 pt-8 sm:max-w-2xl">
@@ -73,13 +75,46 @@ export function HomePage() {
         </div>
       </div>
 
-      <div className="mb-8 flex gap-3 rounded-xl border border-border bg-card p-4 text-sm">
+      <div className="mb-6 flex gap-3 rounded-xl border border-border bg-card p-4 text-sm">
         <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
         <div>
           <p className="font-medium">{t(uiLang, "honestTitle")}</p>
           <p className="mt-1 text-muted">{t(uiLang, "honestBody")}</p>
         </div>
       </div>
+
+      {/* Phase 5 template strip */}
+      <section className="mb-6">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-medium">
+            {uiLang === "hi" ? "भारत टेम्पलेट" : "Bharat templates"}
+          </h2>
+          <button
+            type="button"
+            onClick={() => navigate("/create")}
+            className="text-xs text-accent"
+          >
+            {uiLang === "hi" ? "सभी देखें" : "See all"}
+          </button>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {BHARAT_TEMPLATES.slice(0, 4).map((tpl) => (
+            <button
+              key={tpl.id}
+              type="button"
+              onClick={() => navigate("/create")}
+              className="min-w-[140px] shrink-0 rounded-xl border border-border bg-card px-3 py-2.5 text-left hover:border-accent/50"
+            >
+              <p className="text-xs font-semibold leading-tight">
+                {uiLang === "hi" ? tpl.titleHi : tpl.titleEn}
+              </p>
+              <p className="mt-1 text-[10px] text-muted">
+                {uiLang === "hi" ? tpl.tagHi : tpl.tagEn}
+              </p>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <Link
         to="/create"
