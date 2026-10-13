@@ -42,7 +42,6 @@ interface MovieState {
   removeScene: (movieId: string, sceneId: string) => void;
   reorderScenes: (movieId: string, sceneIds: string[]) => void;
   deleteMovie: (id: string) => void;
-  /** Apply generated script: replaces cast + scenes, updates synopsis */
   applyScriptResult: (
     movieId: string,
     result: ScriptOutput,
@@ -251,6 +250,10 @@ export const useMovieStore = create<MovieState>()(
                   personality: c.personality,
                 }))
               : m.characters;
+
+            // Phase 5: continuity — every scene links to full cast
+            const allCastIds = characters.map((c) => c.id);
+
             const scenes: Scene[] = replaceScenes
               ? result.scenes.map((sc, order) => ({
                   id: uid(),
@@ -263,7 +266,7 @@ export const useMovieStore = create<MovieState>()(
                   narration: sc.narration,
                   estimatedDurationSec: sc.estimatedDurationSec,
                   status: "draft" as const,
-                  characterIds: [],
+                  characterIds: allCastIds,
                 }))
               : m.scenes;
             return {
