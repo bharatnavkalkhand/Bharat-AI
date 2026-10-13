@@ -52,7 +52,7 @@ function uid() {
 
 export const useMovieStore = create<MovieState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       movies: [],
       currentMovieId: null,
 
