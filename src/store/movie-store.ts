@@ -8,6 +8,7 @@ import type {
   Language,
   SceneMood,
 } from "@/lib/types";
+import type { ScriptOutput } from "@/lib/script-engine";
 
 interface MovieState {
   movies: Movie[];
@@ -41,6 +42,12 @@ interface MovieState {
   removeScene: (movieId: string, sceneId: string) => void;
   reorderScenes: (movieId: string, sceneIds: string[]) => void;
   deleteMovie: (id: string) => void;
+  /** Apply generated script: replaces cast + scenes, updates synopsis */
+  applyScriptResult: (
+    movieId: string,
+    result: ScriptOutput,
+    opts?: { replaceCast?: boolean; replaceScenes?: boolean },
+  ) => void;
 }
 
 function uid() {
@@ -228,6 +235,49 @@ export const useMovieStore = create<MovieState>()(
           currentMovieId:
             s.currentMovieId === id ? null : s.currentMovieId,
         })),
+
+      applyScriptResult: (movieId, result, opts) => {
+        const replaceCast = opts?.replaceCast !== false;
+        const replaceScenes = opts?.replaceScenes !== false;
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            const characters: Character[] = replaceCast
+              ? result.characters.map((c) => ({
+                  id: uid(),
+                  name: c.name,
+                  role: c.role,
+                  appearance: c.appearance,
+                  personality: c.personality,
+                }))
+              : m.characters;
+            const scenes: Scene[] = replaceScenes
+              ? result.scenes.map((sc, order) => ({
+                  id: uid(),
+                  order,
+                  title: sc.title,
+                  mood: sc.mood,
+                  dialogue: sc.dialogue,
+                  gestureNotes: sc.gestureNotes,
+                  visualPrompt: sc.visualPrompt,
+                  narration: sc.narration,
+                  estimatedDurationSec: sc.estimatedDurationSec,
+                  status: "draft" as const,
+                  characterIds: [],
+                }))
+              : m.scenes;
+            return {
+              ...m,
+              title: result.title || m.title,
+              synopsis: result.synopsis || m.synopsis,
+              characters,
+              scenes,
+              status: "planning" as const,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+      },
     }),
     {
       name: "bharat-ai-movies",
