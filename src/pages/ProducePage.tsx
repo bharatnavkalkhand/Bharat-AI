@@ -30,6 +30,7 @@ import {
   bindScenesForPlayer,
   readImageAsDataUrl,
 } from "@/agents/visual-binder";
+import type { MotionIntensity } from "@/agents/motion-engine";
 import { cn } from "@/lib/utils";
 
 function StagePill({ status }: { status: AgentStageStatus }) {
@@ -99,6 +100,8 @@ export function ProducePage() {
   const [doVoice, setDoVoice] = useState(false);
   const [doVideo, setDoVideo] = useState(true);
   const [headline, setHeadline] = useState("");
+  const [motionIntensity, setMotionIntensity] =
+    useState<MotionIntensity>("medium");
 
   const catalog = getAgentCatalog();
 
@@ -267,8 +270,8 @@ export function ProducePage() {
     setCinemaCaption("");
     setRecordStatus(
       record
-        ? "Phase 2: fetching dialogue audio, then recording…"
-        : "Playing…",
+        ? "Fetching audio + recording with motion…"
+        : "Playing with motion…",
     );
     setLastExport(null);
 
@@ -290,6 +293,7 @@ export function ProducePage() {
           height,
           record,
           embedAudio: true,
+          motionIntensity,
           onCaption: (t) => setCinemaCaption(t),
           onScene: (i) => setFrameIndex(i),
           onRecordProgress: (msg) => setRecordStatus(msg),
@@ -309,8 +313,8 @@ export function ProducePage() {
         });
         setRecordStatus(
           result.hadAudioTrack
-            ? `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB) — video + embedded dialogue audio.`
-            : `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB) — video + captions (server TTS unavailable; browser voice was live-only).`,
+            ? `Ready: ${name} — motion + embedded audio.`
+            : `Ready: ${name} — motion + captions.`,
         );
         downloadBlob(result.blob, name);
       } else if (record) {
@@ -348,17 +352,16 @@ export function ProducePage() {
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">Produce Movie</h1>
-          <p className="text-sm text-muted">{movie.title} · Phase 1–2</p>
+          <p className="text-sm text-muted">{movie.title} · Phase 1–4</p>
         </div>
       </header>
 
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          <strong className="text-fg">Phase 2:</strong> Export tries to embed real
-          dialogue audio into the file (free TTS). If blocked, falls back to
-          captions + browser voice while playing. Upload scene art for Flixier-like
-          panels.
+          <strong className="text-fg">Phase 4:</strong> Mood-based motion
+          (fight shake, romance pan). Export embeds audio when TTS works. Upload
+          scene art; optional GPU worker for true AI motion.
         </p>
       </div>
 
@@ -467,9 +470,33 @@ export function ProducePage() {
         </section>
       )}
 
+      <section className="mb-4 rounded-xl border border-border bg-card p-3">
+        <p className="mb-2 text-xs font-medium">Motion intensity (Phase 4)</p>
+        <div className="flex gap-2">
+          {(["low", "medium", "high"] as MotionIntensity[]).map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => setMotionIntensity(level)}
+              className={cn(
+                "flex-1 rounded-lg border py-2 text-xs font-medium capitalize",
+                motionIntensity === level
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-border text-muted",
+              )}
+            >
+              {level}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-muted">
+          Fight/action = shake · Romance = slow pan · Works without GPU
+        </p>
+      </section>
+
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
-          <p className="text-xs font-medium text-muted">Cinematic + audio export</p>
+          <p className="text-xs font-medium text-muted">Cinematic + motion + audio</p>
           <input
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
@@ -552,11 +579,14 @@ export function ProducePage() {
       )}
 
       <section className="mb-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-1 text-sm font-medium">Video worker (optional)</h2>
+        <h2 className="mb-1 text-sm font-medium">AI motion worker (optional Phase 4)</h2>
+        <p className="mb-2 text-xs text-muted">
+          Point to ComfyUI / AnimateDiff style API: POST /generate, GET /status/:id
+        </p>
         <input
           value={workerUrl}
           onChange={(e) => setWorkerUrl(e.target.value)}
-          placeholder="https://your-free-worker.example.com"
+          placeholder="https://your-free-gpu-worker.example.com"
           className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
         />
       </section>
