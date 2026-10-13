@@ -80,7 +80,7 @@ export const AGENT_CATALOG: AgentCapability[] = [
     id: "voice",
     name: "Voice / Narration Agent",
     description:
-      "Phase 2: free TTS audio chunks muxed into export when available; else browser speech + captions.",
+      "Free TTS audio chunks muxed into export when available; else browser speech + captions.",
     freeNow: true,
     qualityScore: 3,
     upgradePath:
@@ -90,11 +90,11 @@ export const AGENT_CATALOG: AgentCapability[] = [
     id: "video",
     name: "Video Agent",
     description:
-      "Dual-panel cinematic + scene art + WebM/MP4 export. Motion still limited without GPU worker.",
+      "Phase 4: dual-panel + mood motion (shake/pan/zoom) + export. True AI motion via optional worker.",
     freeNow: true,
-    qualityScore: 2,
+    qualityScore: 3,
     upgradePath:
-      "Deploy open-source video worker (ComfyUI / AnimateDiff) and set WORKER_URL.",
+      "Deploy ComfyUI / AnimateDiff worker: POST /generate, GET /status/:id",
   },
   {
     id: "orchestrator",
