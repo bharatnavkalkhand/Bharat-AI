@@ -1,9 +1,13 @@
 /**
- * Scene player: dual panel + caption + TTS + MediaRecorder export.
- * Phase 2: real audio blobs muxed into recording when server TTS works.
+ * Scene player: dual panel + caption + TTS + motion + MediaRecorder export.
+ * Phase 4: mood-based cinematic motion (no GPU required).
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
+import {
+  motionAt,
+  type MotionIntensity,
+} from "./motion-engine";
 
 export interface PlayerScene {
   id: string;
@@ -25,8 +29,9 @@ export interface PlayerOptions {
   onScene?: (index: number, total: number) => void;
   record?: boolean;
   onRecordProgress?: (msg: string) => void;
-  /** Prefer server TTS audio in export (Phase 2) */
   embedAudio?: boolean;
+  /** Phase 4 motion strength */
+  motionIntensity?: MotionIntensity;
 }
 
 export interface PlayResult {
@@ -69,7 +74,9 @@ function drawPanel(
   mood: string,
   label: string,
   image: HTMLImageElement | null,
-  zoom: number,
+  t: number,
+  intensity: MotionIntensity,
+  phase = 0,
 ) {
   const [c1, c2] = MOOD_COLORS[mood] || MOOD_COLORS.dialogue;
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
@@ -78,21 +85,34 @@ function drawPanel(
   ctx.fillStyle = g;
   ctx.fillRect(x, y, w, h);
 
+  const mot = motionAt(mood, t + phase, intensity);
+
   if (image && image.complete && image.naturalWidth) {
     const iw = image.naturalWidth;
     const ih = image.naturalHeight;
-    const scale = Math.max(w / iw, h / ih) * zoom;
+    const baseScale = Math.max(w / iw, h / ih);
+    const scale = baseScale * mot.zoom;
     const dw = iw * scale;
     const dh = ih * scale;
-    const dx = x + (w - dw) / 2;
-    const dy = y + (h - dh) / 2;
+    const dx = x + (w - dw) / 2 + mot.panX;
+    const dy = y + (h - dh) / 2 + mot.panY;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
+    if (mot.rot !== 0) {
+      ctx.translate(x + w / 2, y + h / 2);
+      ctx.rotate((mot.rot * Math.PI) / 180);
+      ctx.translate(-(x + w / 2), -(y + h / 2));
+    }
     ctx.drawImage(image, dx, dy, dw, dh);
     ctx.restore();
   } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    // Animated label drift for empty panels
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.font = `600 ${Math.floor(w * 0.042)}px system-ui,sans-serif`;
     ctx.textAlign = "center";
@@ -109,8 +129,13 @@ function drawPanel(
     }
     if (line) lines.push(line);
     lines.slice(0, 3).forEach((ln, i) => {
-      ctx.fillText(ln, x + w / 2, y + h / 2 + (i - 1) * 22);
+      ctx.fillText(
+        ln,
+        x + w / 2 + mot.panX * 0.3,
+        y + h / 2 + (i - 1) * 22 + mot.panY * 0.3,
+      );
     });
+    ctx.restore();
   }
 }
 
@@ -240,10 +265,10 @@ function drawFrame(
   imgTop: HTMLImageElement | null,
   imgBot: HTMLImageElement | null,
   t: number,
+  intensity: MotionIntensity,
 ) {
   const midBand = Math.floor(h * 0.14);
   const panelH = Math.floor((h - midBand) / 2);
-  const zoom = 1 + Math.min(0.12, t * 0.02);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
   drawPanel(
@@ -255,7 +280,9 @@ function drawFrame(
     sc.mood,
     sc.visualPrompt || sc.title,
     imgTop,
-    zoom,
+    t,
+    intensity,
+    0,
   );
   drawHeadline(ctx, w, panelH, midBand, headline);
   drawPanel(
@@ -267,9 +294,13 @@ function drawFrame(
     sc.mood,
     sc.title,
     imgBot || imgTop,
-    1 + Math.min(0.08, t * 0.015),
+    t,
+    intensity,
+    0.7,
   );
-  ctx.fillStyle = "rgba(0,0,0,0.75)";
+  // Subtitle pulse lightly with speech
+  const pulse = 0.72 + 0.08 * Math.sin(t * 6);
+  ctx.fillStyle = `rgba(0,0,0,${pulse})`;
   ctx.fillRect(0, h - 56, w, 56);
   ctx.fillStyle = "#fff";
   ctx.font = `600 ${Math.max(12, Math.floor(w * 0.035))}px system-ui,sans-serif`;
@@ -298,11 +329,11 @@ export async function playScenesOnCanvas(
   };
   if (!ctx || !scenes.length) return empty;
 
+  const intensity: MotionIntensity = options.motionIntensity ?? "medium";
   const headline =
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
 
-  // Preload images
   const imageCache = new Map<string, HTMLImageElement>();
   async function loadImg(src?: string) {
     if (!src) return null;
@@ -315,7 +346,6 @@ export async function playScenesOnCanvas(
     return img;
   }
 
-  // Prepare TTS audio (Phase 2)
   const dialogueLines = collectDialogueLines(scenes);
   let timed: TimedLine[] = [];
   let audioCtx: AudioContext | null = null;
@@ -343,7 +373,6 @@ export async function playScenesOnCanvas(
     }
   }
 
-  // Recording setup with optional audio track
   let mixedStream: MediaStream | null = null;
   let dest: MediaStreamAudioDestinationNode | null = null;
   let recorder: MediaRecorder | null = null;
@@ -360,11 +389,10 @@ export async function playScenesOnCanvas(
 
     if (audioCtx && usedServerTts) {
       dest = audioCtx.createMediaStreamDestination();
-      const tracks = [
+      mixedStream = new MediaStream([
         ...videoStream.getVideoTracks(),
         ...dest.stream.getAudioTracks(),
-      ];
-      mixedStream = new MediaStream(tracks);
+      ]);
       hadAudioTrack = true;
     } else {
       mixedStream = videoStream;
@@ -389,13 +417,12 @@ export async function playScenesOnCanvas(
       recorder.start(250);
       options.onRecordProgress?.(
         hadAudioTrack
-          ? `Recording ${extension.toUpperCase()} + audio…`
-          : `Recording ${extension.toUpperCase()} (captions; TTS live-only)…`,
+          ? `Recording ${extension.toUpperCase()} + audio + motion…`
+          : `Recording ${extension.toUpperCase()} + motion…`,
       );
     }
   }
 
-  // Flatten playback: each timed line belongs to a scene
   let lineCursor = 0;
 
   for (let si = 0; si < scenes.length; si++) {
@@ -424,12 +451,11 @@ export async function playScenesOnCanvas(
       const t0 = performance.now();
       let lineDone = false;
 
-      // Play embeddable audio OR browser TTS
       if (line?.buffer && audioCtx && dest) {
         const src = audioCtx.createBufferSource();
         src.buffer = line.buffer;
         src.connect(dest);
-        src.connect(audioCtx.destination); // also hear locally
+        src.connect(audioCtx.destination);
         src.onended = () => {
           lineDone = true;
         };
@@ -470,6 +496,7 @@ export async function playScenesOnCanvas(
           imgTop,
           imgBot,
           elapsed / 1000,
+          intensity,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
