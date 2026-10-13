@@ -1,7 +1,8 @@
 /**
- * Scene player inspired by short-form illustrated history videos
- * (dual panel + Hindi caption bar + dialogue TTS + mild motion).
- * Runs fully in-browser at ₹0. Not a replacement for full AI video models.
+ * Scene player: dual panel + caption + TTS + optional MediaRecorder export.
+ * Browser free path — WebM (Chrome/Android/Firefox); MP4 when browser supports it.
+ * Note: Web Speech TTS is heard live but usually cannot be muxed into the file
+ * (browser security). Burned-in captions carry dialogue in the export.
  */
 
 export interface PlayerScene {
@@ -11,9 +12,7 @@ export interface PlayerScene {
   dialogue?: string;
   narration?: string;
   visualPrompt?: string;
-  /** Optional image URL or data URL for top panel */
   imageTop?: string;
-  /** Optional image for bottom panel */
   imageBottom?: string;
 }
 
@@ -24,6 +23,16 @@ export interface PlayerOptions {
   height?: number;
   onCaption?: (text: string) => void;
   onScene?: (index: number, total: number) => void;
+  /** When true, records canvas to a video blob and returns it */
+  record?: boolean;
+  onRecordProgress?: (msg: string) => void;
+}
+
+export interface PlayResult {
+  blob: Blob | null;
+  mimeType: string;
+  extension: "webm" | "mp4";
+  hadAudioTrack: boolean;
 }
 
 function parseTurns(dialogue: string): Array<{ speaker: string; text: string }> {
@@ -83,10 +92,24 @@ function drawPanel(
     ctx.drawImage(image, dx, dy, dw, dh);
     ctx.restore();
   } else {
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    ctx.font = `600 ${Math.floor(w * 0.045)}px system-ui,sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.font = `600 ${Math.floor(w * 0.042)}px system-ui,sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillText(label.slice(0, 48), x + w / 2, y + h / 2);
+    ctx.textBaseline = "middle";
+    const words = label.slice(0, 80).split(/\s+/);
+    let line = "";
+    const lines: string[] = [];
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > w * 0.85 && line) {
+        lines.push(line);
+        line = word;
+      } else line = test;
+    }
+    if (line) lines.push(line);
+    lines.slice(0, 3).forEach((ln, i) => {
+      ctx.fillText(ln, x + w / 2, y + h / 2 + (i - 1) * 22);
+    });
   }
 }
 
@@ -99,13 +122,10 @@ function drawHeadline(
 ) {
   ctx.fillStyle = "#0a0a0a";
   ctx.fillRect(0, y, w, h);
-  // yellow/white style like sample
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const fs = Math.max(18, Math.floor(w * 0.048));
+  const fs = Math.max(16, Math.floor(w * 0.048));
   ctx.font = `800 ${fs}px "Noto Sans Devanagari",system-ui,sans-serif`;
-  ctx.fillStyle = "#facc15";
-  // simple wrap
   const maxW = w * 0.92;
   const words = text.split(/\s+/);
   let line = "";
@@ -120,7 +140,6 @@ function drawHeadline(
   if (line) lines.push(line);
   const startY = y + h / 2 - ((lines.length - 1) * fs * 1.15) / 2;
   lines.slice(0, 2).forEach((ln, i) => {
-    // highlight last few words in white if Hindi mixed — keep yellow base
     ctx.fillStyle = i === 0 ? "#f8fafc" : "#facc15";
     ctx.fillText(ln, w / 2, startY + i * fs * 1.15);
   });
@@ -159,31 +178,123 @@ export function stopScenePlayer() {
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 }
 
+/** Prefer MP4 when supported (Safari), else WebM VP9/VP8 */
+export function pickRecorderMime(): { mimeType: string; extension: "webm" | "mp4" } {
+  const candidates: Array<{ mimeType: string; extension: "webm" | "mp4" }> = [
+    { mimeType: "video/mp4", extension: "mp4" },
+    { mimeType: "video/mp4;codecs=avc1", extension: "mp4" },
+    { mimeType: "video/webm;codecs=vp9", extension: "webm" },
+    { mimeType: "video/webm;codecs=vp8", extension: "webm" },
+    { mimeType: "video/webm", extension: "webm" },
+  ];
+  for (const c of candidates) {
+    if (
+      typeof MediaRecorder !== "undefined" &&
+      MediaRecorder.isTypeSupported(c.mimeType)
+    ) {
+      return c;
+    }
+  }
+  return { mimeType: "video/webm", extension: "webm" };
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+}
+
+function startRecording(canvas: HTMLCanvasElement): {
+  recorder: MediaRecorder;
+  chunks: BlobPart[];
+  mimeType: string;
+  extension: "webm" | "mp4";
+  stop: () => Promise<Blob>;
+} | null {
+  if (!canvas.captureStream || typeof MediaRecorder === "undefined") return null;
+  const { mimeType, extension } = pickRecorderMime();
+  const stream = canvas.captureStream(30);
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 2_500_000,
+    });
+  } catch {
+    try {
+      recorder = new MediaRecorder(stream);
+    } catch {
+      return null;
+    }
+  }
+  const chunks: BlobPart[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+  const stop = () =>
+    new Promise<Blob>((resolve) => {
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        resolve(new Blob(chunks, { type: recorder.mimeType || mimeType }));
+      };
+      if (recorder.state !== "inactive") recorder.stop();
+      else resolve(new Blob(chunks, { type: mimeType }));
+    });
+  recorder.start(250);
+  return { recorder, chunks, mimeType, extension, stop };
+}
+
 /**
- * Play scenes on a canvas with dual-panel layout + caption + TTS.
- * Matches the *structure* of short illustrated dialogue videos.
+ * Play dual-panel cinematic; optionally record to WebM/MP4.
  */
 export async function playScenesOnCanvas(
   canvas: HTMLCanvasElement,
   scenes: PlayerScene[],
   options: PlayerOptions,
   signal?: { stopped: boolean },
-): Promise<void> {
+): Promise<PlayResult> {
   const w = options.width ?? 360;
   const h = options.height ?? 450;
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx || !scenes.length) return;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const empty: PlayResult = {
+    blob: null,
+    mimeType: "",
+    extension: "webm",
+    hadAudioTrack: false,
+  };
+  if (!ctx || !scenes.length) return empty;
 
   const headline =
     options.headline ||
-    (options.language === "hi"
-      ? "कहानी चल रही है…"
-      : "Story in motion…");
+    (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
 
   const midBand = Math.floor(h * 0.14);
   const panelH = Math.floor((h - midBand) / 2);
+
+  let recording: ReturnType<typeof startRecording> = null;
+  if (options.record) {
+    // Draw one black frame so captureStream has content
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    recording = startRecording(canvas);
+    if (recording) {
+      options.onRecordProgress?.(
+        `Recording ${recording.extension.toUpperCase()}…`,
+      );
+    } else {
+      options.onRecordProgress?.(
+        "Recording not supported in this browser — playing only.",
+      );
+    }
+  }
 
   for (let si = 0; si < scenes.length; si++) {
     if (signal?.stopped) break;
@@ -218,20 +329,36 @@ export async function playScenesOnCanvas(
         : turn.text;
       options.onCaption?.(caption);
 
-      // Ken Burns frames while speaking
       const t0 = performance.now();
+      // Minimum hold so short lines still produce video frames
+      const minHoldMs = 2200;
       const speakP = speak(turn.text, options.language, turn.speaker || sc.mood);
-      let done = false;
+      let speakDone = false;
       speakP.then(() => {
-        done = true;
+        speakDone = true;
       });
 
-      while (!done && !signal?.stopped) {
-        const t = (performance.now() - t0) / 1000;
+      while (!signal?.stopped) {
+        const elapsed = performance.now() - t0;
+        if (speakDone && elapsed >= minHoldMs) break;
+        // Cap single line at 20s
+        if (elapsed > 20000) break;
+
+        const t = elapsed / 1000;
         const zoom = 1 + Math.min(0.12, t * 0.02);
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, w, h);
-        drawPanel(ctx, 0, 0, w, panelH, sc.mood, sc.visualPrompt || sc.title, imgTop, zoom);
+        drawPanel(
+          ctx,
+          0,
+          0,
+          w,
+          panelH,
+          sc.mood,
+          sc.visualPrompt || sc.title,
+          imgTop,
+          zoom,
+        );
         drawHeadline(ctx, w, panelH, midBand, headline);
         drawPanel(
           ctx,
@@ -244,8 +371,7 @@ export async function playScenesOnCanvas(
           imgBot || imgTop,
           1 + Math.min(0.08, t * 0.015),
         );
-        // dialogue subtitle bar
-        ctx.fillStyle = "rgba(0,0,0,0.72)";
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
         ctx.fillRect(0, h - 56, w, 56);
         ctx.fillStyle = "#fff";
         ctx.font = `600 ${Math.max(12, Math.floor(w * 0.035))}px system-ui,sans-serif`;
@@ -255,31 +381,23 @@ export async function playScenesOnCanvas(
         ctx.fillText(sub, w / 2, h - 28);
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
-      await new Promise((r) => setTimeout(r, 180));
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
-}
 
-/** Record canvas stream + optional silent path — WebM in browsers that support it */
-export async function recordCanvasWebM(
-  canvas: HTMLCanvasElement,
-  durationMs: number,
-): Promise<Blob | null> {
-  if (!canvas.captureStream) return null;
-  const stream = canvas.captureStream(30);
-  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-    ? "video/webm;codecs=vp9"
-    : "video/webm";
-  const rec = new MediaRecorder(stream, { mimeType: mime });
-  const chunks: BlobPart[] = [];
-  rec.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-  const done = new Promise<Blob>((resolve) => {
-    rec.onstop = () => resolve(new Blob(chunks, { type: mime }));
-  });
-  rec.start(200);
-  await new Promise((r) => setTimeout(r, durationMs));
-  rec.stop();
-  return done;
+  // Hold last frame briefly for clean end
+  await new Promise((r) => setTimeout(r, 400));
+
+  if (recording) {
+    options.onRecordProgress?.("Finalizing file…");
+    const blob = await recording.stop();
+    return {
+      blob: blob.size > 0 ? blob : null,
+      mimeType: recording.mimeType,
+      extension: recording.extension,
+      hadAudioTrack: false,
+    };
+  }
+
+  return empty;
 }
