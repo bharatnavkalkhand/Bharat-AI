@@ -1,43 +1,74 @@
-# Bharat AI
+# Bharat AI — Avatar Movie Studio
 
-**Avatar Movie Studio** — Create story-driven 5–10 minute movies with characters, fight scenes, romance gestures, and avatar-style consistency.
+Mobile-first AI movie **production pipeline** for Indian users. Design goal: **₹0 operating cost** where possible, with honest limits.
 
-> **Fundamental design goal: ₹0 operating cost**
+**Live:** https://bharat-ai-chi.vercel.app  
+**Repo:** https://github.com/bharatnavkalkhand/Bharat-AI
 
-## What this app is built for
+## Current completion (honest)
 
-- **Characters / Avatars** — name, appearance, role, reference photo upload for face consistency
-- **Fight scenes** — marked with action notes
-- **Romance scenes** — soft gestures
-- **Gesture / body language** scenes
-- Hindi + English
-- 5 min / 10 min target durations
+| Area | Status | Notes |
+|------|--------|-------|
+| Script Agent | Working (free) | Browser engine + optional Groq free-tier via `GROQ_API_KEY` |
+| Voice Agent | Working (free) | Browser Web Speech — system voices, not true character clones |
+| Video Agent | Storyboard only | Timed preview frames; real MP4 needs GPU worker |
+| Cast / scenes UI | Working | Edit, fight/romance moods, reference faces |
+| Full 5–10 min avatar MP4 | Not yet | Requires open-source video worker |
 
-## Honest status
+Roughly a **pipeline foundation (~25–30%)**, not a finished movie generator.
 
-### Working now
-- Mobile-first UI
-- Create movie with genre focus (Action/Fight, Romance, Drama, Comedy)
-- Character & Avatar Studio with reference image upload
-- Scene Planner with mood tags: fight · romance · gesture · dialogue · action · emotional
-- Local persistence
+## Multi-agent architecture
 
-### Not yet
-- Full AI script generation
-- Free image / video generation pipeline
-- Talking-avatar / lip-sync
-- Multi-scene assembly + MP4 export
+```
+Script Agent → Voice Agent → Video Agent
+      ↑              ↑              ↑
+  browser /      Web Speech     storyboard
+  Groq free        (free)       + optional
+                                WORKER_URL
+```
 
-## Run locally
+- **Orchestrator** runs stages in order from **Produce** (`/movie/:id/produce`).
+- Agents are pluggable: upgrade quality without rewriting the app UI.
+
+### Free LLM (optional)
+
+1. Create a free key at [console.groq.com](https://console.groq.com) (free tier, rate limits).
+2. In Vercel → Project → Settings → Environment Variables:
+   - `GROQ_API_KEY` = your key
+3. Redeploy. Script Agent will try Groq first; if unavailable, falls back to local engine.
+
+### Real character voice (upgrade)
+
+Self-host open-source TTS:
+
+- [Piper](https://github.com/rhasspy/piper) (fast, CPU)
+- [Coqui XTTS](https://github.com/coqui-ai/TTS) (voice clone)
+
+Expose HTTP `/tts` and wire into Voice Agent later.
+
+### Real video / avatar (upgrade)
+
+Self-host on your GPU or free community compute:
+
+- ComfyUI + AnimateDiff / Wan / Open-Sora style workflows
+- Custom FastAPI worker: `POST /generate` with scene prompts
+
+In Produce tab, set **Video worker URL** (saved in browser `localStorage`).
+
+## Local dev
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Tech
+## Deploy
 
-- Vite + React 19 + TypeScript + Tailwind CSS v4
-- Zustand (persisted)
-- React Router
-- Zod
+Vercel (free hobby). SPA rewrite in `vercel.json`. API under `/api/agents/*`.
+
+## Non-negotiables
+
+- Prefer open-source and free tiers
+- Never put secrets in frontend code
+- Never claim unlimited video at ₹0
+- Ship working stages before marketing “AI movie”
