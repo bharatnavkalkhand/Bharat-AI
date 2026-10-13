@@ -118,7 +118,7 @@ export function ProducePage() {
     if (movie.scenes.length > 0) {
       return bindScenesForPlayer(movie.scenes, movie.characters);
     }
-    return storyboard.map((f, i) => ({
+    return storyboard.map((f) => ({
       id: f.sceneId,
       title: f.title,
       mood: f.mood,
@@ -265,7 +265,11 @@ export function ProducePage() {
     setPlayingCinema(true);
     setExporting(record);
     setCinemaCaption("");
-    setRecordStatus(record ? "Recording… keep this tab open" : "Playing…");
+    setRecordStatus(
+      record
+        ? "Phase 2: fetching dialogue audio, then recording…"
+        : "Playing…",
+    );
     setLastExport(null);
 
     const hl =
@@ -285,6 +289,7 @@ export function ProducePage() {
           width,
           height,
           record,
+          embedAudio: true,
           onCaption: (t) => setCinemaCaption(t),
           onScene: (i) => setFrameIndex(i),
           onRecordProgress: (msg) => setRecordStatus(msg),
@@ -303,13 +308,13 @@ export function ProducePage() {
           name,
         });
         setRecordStatus(
-          `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB). Art + captions in file.`,
+          result.hadAudioTrack
+            ? `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB) — video + embedded dialogue audio.`
+            : `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB) — video + captions (server TTS unavailable; browser voice was live-only).`,
         );
         downloadBlob(result.blob, name);
       } else if (record) {
-        setRecordStatus(
-          "Recording failed — try Chrome/Firefox.",
-        );
+        setRecordStatus("Recording failed — try Chrome/Firefox.");
       } else {
         setRecordStatus("Playback finished.");
       }
@@ -343,16 +348,17 @@ export function ProducePage() {
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">Produce Movie</h1>
-          <p className="text-sm text-muted">{movie.title} · Phase 1 visuals</p>
+          <p className="text-sm text-muted">{movie.title} · Phase 1–2</p>
         </div>
       </header>
 
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          Roadmap Phase 1: upload <strong className="text-fg">scene art</strong> or
-          cast faces (Cast tab) — they bind into dual panels on Play / Export.
-          Closer to Flixier layout when you add real images.
+          <strong className="text-fg">Phase 2:</strong> Export tries to embed real
+          dialogue audio into the file (free TTS). If blocked, falls back to
+          captions + browser voice while playing. Upload scene art for Flixier-like
+          panels.
         </p>
       </div>
 
@@ -415,84 +421,45 @@ export function ProducePage() {
         </button>
       </div>
 
-      {/* Scene art uploads */}
       {sortedScenes.length > 0 && (
         <section className="mb-6 space-y-2">
           <h2 className="text-sm font-medium">Scene art (dual panels)</h2>
-          <p className="text-xs text-muted">
-            Top + bottom images per scene. Or upload faces in Cast — auto-used.
-          </p>
           <ul className="space-y-2">
             {sortedScenes.slice(0, 8).map((sc, idx) => (
-              <li
-                key={sc.id}
-                className="rounded-xl border border-border bg-card p-3"
-              >
+              <li key={sc.id} className="rounded-xl border border-border bg-card p-3">
                 <p className="mb-2 text-xs font-medium">
                   {idx + 1}. {sc.title}{" "}
                   <span className="text-muted">({sc.mood})</span>
                 </p>
                 <div className="flex gap-2">
-                  <div className="flex-1">
-                    <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
-                      {sc.imageTopLocal ? (
-                        <img
-                          src={sc.imageTopLocal}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[10px] text-muted">
-                          Top
+                  {(["top", "bottom"] as const).map((slot) => {
+                    const src =
+                      slot === "top" ? sc.imageTopLocal : sc.imageBottomLocal;
+                    return (
+                      <div key={slot} className="flex-1">
+                        <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
+                          {src ? (
+                            <img src={src} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[10px] text-muted">
+                              {slot}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
-                      <ImagePlus className="h-3 w-3" /> Top
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          onSceneImage(
-                            sc.id,
-                            "top",
-                            e.target.files?.[0] ?? null,
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                  <div className="flex-1">
-                    <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
-                      {sc.imageBottomLocal ? (
-                        <img
-                          src={sc.imageBottomLocal}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[10px] text-muted">
-                          Bottom
-                        </div>
-                      )}
-                    </div>
-                    <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
-                      <ImagePlus className="h-3 w-3" /> Bottom
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          onSceneImage(
-                            sc.id,
-                            "bottom",
-                            e.target.files?.[0] ?? null,
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
+                        <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
+                          <ImagePlus className="h-3 w-3" /> {slot}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) =>
+                              onSceneImage(sc.id, slot, e.target.files?.[0] ?? null)
+                            }
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
                 </div>
               </li>
             ))}
@@ -502,15 +469,11 @@ export function ProducePage() {
 
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
-          <p className="text-xs font-medium text-muted">Cinematic player + export</p>
+          <p className="text-xs font-medium text-muted">Cinematic + audio export</p>
           <input
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
-            placeholder={
-              movie.language === "hi"
-                ? "शीर्षक कैप्शन"
-                : "Headline caption"
-            }
+            placeholder={movie.language === "hi" ? "शीर्षक कैप्शन" : "Headline caption"}
             className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
           />
         </div>
