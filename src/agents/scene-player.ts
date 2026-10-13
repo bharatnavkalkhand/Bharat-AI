@@ -1,9 +1,9 @@
 /**
- * Scene player: dual panel + caption + TTS + optional MediaRecorder export.
- * Browser free path — WebM (Chrome/Android/Firefox); MP4 when browser supports it.
- * Note: Web Speech TTS is heard live but usually cannot be muxed into the file
- * (browser security). Burned-in captions carry dialogue in the export.
+ * Scene player: dual panel + caption + TTS + MediaRecorder export.
+ * Phase 2: real audio blobs muxed into recording when server TTS works.
  */
+
+import { prepareTimedLines, type TimedLine } from "./tts-engine";
 
 export interface PlayerScene {
   id: string;
@@ -23,9 +23,10 @@ export interface PlayerOptions {
   height?: number;
   onCaption?: (text: string) => void;
   onScene?: (index: number, total: number) => void;
-  /** When true, records canvas to a video blob and returns it */
   record?: boolean;
   onRecordProgress?: (msg: string) => void;
+  /** Prefer server TTS audio in export (Phase 2) */
+  embedAudio?: boolean;
 }
 
 export interface PlayResult {
@@ -145,7 +146,7 @@ function drawHeadline(
   });
 }
 
-function speak(
+function speakBrowser(
   text: string,
   language: "en" | "hi",
   speaker: string,
@@ -178,14 +179,16 @@ export function stopScenePlayer() {
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 }
 
-/** Prefer MP4 when supported (Safari), else WebM VP9/VP8 */
-export function pickRecorderMime(): { mimeType: string; extension: "webm" | "mp4" } {
+export function pickRecorderMime(): {
+  mimeType: string;
+  extension: "webm" | "mp4";
+} {
   const candidates: Array<{ mimeType: string; extension: "webm" | "mp4" }> = [
-    { mimeType: "video/mp4", extension: "mp4" },
-    { mimeType: "video/mp4;codecs=avc1", extension: "mp4" },
+    { mimeType: "video/webm;codecs=vp9,opus", extension: "webm" },
+    { mimeType: "video/webm;codecs=vp8,opus", extension: "webm" },
     { mimeType: "video/webm;codecs=vp9", extension: "webm" },
-    { mimeType: "video/webm;codecs=vp8", extension: "webm" },
     { mimeType: "video/webm", extension: "webm" },
+    { mimeType: "video/mp4", extension: "mp4" },
   ];
   for (const c of candidates) {
     if (
@@ -210,49 +213,72 @@ export function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
 
-function startRecording(canvas: HTMLCanvasElement): {
-  recorder: MediaRecorder;
-  chunks: BlobPart[];
-  mimeType: string;
-  extension: "webm" | "mp4";
-  stop: () => Promise<Blob>;
-} | null {
-  if (!canvas.captureStream || typeof MediaRecorder === "undefined") return null;
-  const { mimeType, extension } = pickRecorderMime();
-  const stream = canvas.captureStream(30);
-  let recorder: MediaRecorder;
-  try {
-    recorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 2_500_000,
-    });
-  } catch {
-    try {
-      recorder = new MediaRecorder(stream);
-    } catch {
-      return null;
+function collectDialogueLines(
+  scenes: PlayerScene[],
+): Array<{ speaker: string; text: string; sceneIndex: number }> {
+  const all: Array<{ speaker: string; text: string; sceneIndex: number }> = [];
+  scenes.forEach((sc, sceneIndex) => {
+    const turns = sc.dialogue
+      ? parseTurns(sc.dialogue)
+      : sc.narration
+        ? [{ speaker: "Narrator", text: sc.narration }]
+        : [{ speaker: "", text: sc.title }];
+    for (const t of turns) {
+      all.push({ ...t, sceneIndex });
     }
-  }
-  const chunks: BlobPart[] = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data && e.data.size > 0) chunks.push(e.data);
-  };
-  const stop = () =>
-    new Promise<Blob>((resolve) => {
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        resolve(new Blob(chunks, { type: recorder.mimeType || mimeType }));
-      };
-      if (recorder.state !== "inactive") recorder.stop();
-      else resolve(new Blob(chunks, { type: mimeType }));
-    });
-  recorder.start(250);
-  return { recorder, chunks, mimeType, extension, stop };
+  });
+  return all;
 }
 
-/**
- * Play dual-panel cinematic; optionally record to WebM/MP4.
- */
+function drawFrame(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  sc: PlayerScene,
+  headline: string,
+  caption: string,
+  imgTop: HTMLImageElement | null,
+  imgBot: HTMLImageElement | null,
+  t: number,
+) {
+  const midBand = Math.floor(h * 0.14);
+  const panelH = Math.floor((h - midBand) / 2);
+  const zoom = 1 + Math.min(0.12, t * 0.02);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+  drawPanel(
+    ctx,
+    0,
+    0,
+    w,
+    panelH,
+    sc.mood,
+    sc.visualPrompt || sc.title,
+    imgTop,
+    zoom,
+  );
+  drawHeadline(ctx, w, panelH, midBand, headline);
+  drawPanel(
+    ctx,
+    0,
+    panelH + midBand,
+    w,
+    panelH,
+    sc.mood,
+    sc.title,
+    imgBot || imgTop,
+    1 + Math.min(0.08, t * 0.015),
+  );
+  ctx.fillStyle = "rgba(0,0,0,0.75)";
+  ctx.fillRect(0, h - 56, w, 56);
+  ctx.fillStyle = "#fff";
+  ctx.font = `600 ${Math.max(12, Math.floor(w * 0.035))}px system-ui,sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const sub = caption.length > 90 ? caption.slice(0, 87) + "…" : caption;
+  ctx.fillText(sub, w / 2, h - 28);
+}
+
 export async function playScenesOnCanvas(
   canvas: HTMLCanvasElement,
   scenes: PlayerScene[],
@@ -276,45 +302,108 @@ export async function playScenesOnCanvas(
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
 
-  const midBand = Math.floor(h * 0.14);
-  const panelH = Math.floor((h - midBand) / 2);
+  // Preload images
+  const imageCache = new Map<string, HTMLImageElement>();
+  async function loadImg(src?: string) {
+    if (!src) return null;
+    if (imageCache.has(src)) return imageCache.get(src)!;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = src;
+    await img.decode().catch(() => null);
+    imageCache.set(src, img);
+    return img;
+  }
 
-  let recording: ReturnType<typeof startRecording> = null;
-  if (options.record) {
-    // Draw one black frame so captureStream has content
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    recording = startRecording(canvas);
-    if (recording) {
-      options.onRecordProgress?.(
-        `Recording ${recording.extension.toUpperCase()}…`,
+  // Prepare TTS audio (Phase 2)
+  const dialogueLines = collectDialogueLines(scenes);
+  let timed: TimedLine[] = [];
+  let audioCtx: AudioContext | null = null;
+  let usedServerTts = false;
+
+  if (options.embedAudio !== false) {
+    options.onRecordProgress?.("Preparing dialogue audio…");
+    try {
+      const prep = await prepareTimedLines(
+        dialogueLines.map((d) => ({ speaker: d.speaker, text: d.text })),
+        options.language,
+        (msg) => options.onRecordProgress?.(msg),
       );
+      timed = prep.lines;
+      audioCtx = prep.ctx;
+      usedServerTts = prep.usedServerTts;
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+    } catch {
+      timed = dialogueLines.map((d) => ({
+        text: d.text,
+        speaker: d.speaker,
+        buffer: null,
+        durationSec: Math.max(2.2, Math.min(12, d.text.length / 14)),
+      }));
+    }
+  }
+
+  // Recording setup with optional audio track
+  let mixedStream: MediaStream | null = null;
+  let dest: MediaStreamAudioDestinationNode | null = null;
+  let recorder: MediaRecorder | null = null;
+  const chunks: BlobPart[] = [];
+  let mimeType = "video/webm";
+  let extension: "webm" | "mp4" = "webm";
+  let hadAudioTrack = false;
+
+  if (options.record && canvas.captureStream) {
+    const videoStream = canvas.captureStream(30);
+    const picked = pickRecorderMime();
+    mimeType = picked.mimeType;
+    extension = picked.extension;
+
+    if (audioCtx && usedServerTts) {
+      dest = audioCtx.createMediaStreamDestination();
+      const tracks = [
+        ...videoStream.getVideoTracks(),
+        ...dest.stream.getAudioTracks(),
+      ];
+      mixedStream = new MediaStream(tracks);
+      hadAudioTrack = true;
     } else {
+      mixedStream = videoStream;
+    }
+
+    try {
+      recorder = new MediaRecorder(mixedStream, {
+        mimeType,
+        videoBitsPerSecond: 2_500_000,
+      });
+    } catch {
+      try {
+        recorder = new MediaRecorder(mixedStream);
+      } catch {
+        recorder = null;
+      }
+    }
+    if (recorder) {
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+      recorder.start(250);
       options.onRecordProgress?.(
-        "Recording not supported in this browser — playing only.",
+        hadAudioTrack
+          ? `Recording ${extension.toUpperCase()} + audio…`
+          : `Recording ${extension.toUpperCase()} (captions; TTS live-only)…`,
       );
     }
   }
+
+  // Flatten playback: each timed line belongs to a scene
+  let lineCursor = 0;
 
   for (let si = 0; si < scenes.length; si++) {
     if (signal?.stopped) break;
     const sc = scenes[si];
     options.onScene?.(si, scenes.length);
-
-    let imgTop: HTMLImageElement | null = null;
-    let imgBot: HTMLImageElement | null = null;
-    if (sc.imageTop) {
-      imgTop = new Image();
-      imgTop.crossOrigin = "anonymous";
-      imgTop.src = sc.imageTop;
-      await imgTop.decode().catch(() => null);
-    }
-    if (sc.imageBottom) {
-      imgBot = new Image();
-      imgBot.crossOrigin = "anonymous";
-      imgBot.src = sc.imageBottom;
-      await imgBot.decode().catch(() => null);
-    }
+    const imgTop = await loadImg(sc.imageTop);
+    const imgBot = await loadImg(sc.imageBottom);
 
     const turns = sc.dialogue
       ? parseTurns(sc.dialogue)
@@ -329,74 +418,93 @@ export async function playScenesOnCanvas(
         : turn.text;
       options.onCaption?.(caption);
 
+      const line: TimedLine | undefined = timed[lineCursor];
+      lineCursor += 1;
+
       const t0 = performance.now();
-      // Minimum hold so short lines still produce video frames
-      const minHoldMs = 2200;
-      const speakP = speak(turn.text, options.language, turn.speaker || sc.mood);
-      let speakDone = false;
-      speakP.then(() => {
-        speakDone = true;
-      });
+      let lineDone = false;
+
+      // Play embeddable audio OR browser TTS
+      if (line?.buffer && audioCtx && dest) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = line.buffer;
+        src.connect(dest);
+        src.connect(audioCtx.destination); // also hear locally
+        src.onended = () => {
+          lineDone = true;
+        };
+        src.start();
+      } else if (line?.buffer && audioCtx) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = line.buffer;
+        src.connect(audioCtx.destination);
+        src.onended = () => {
+          lineDone = true;
+        };
+        src.start();
+      } else {
+        speakBrowser(turn.text, options.language, turn.speaker || sc.mood).then(
+          () => {
+            lineDone = true;
+          },
+        );
+      }
+
+      const minHoldMs = Math.max(
+        2200,
+        ((line?.durationSec ?? 2.5) * 1000) | 0,
+      );
 
       while (!signal?.stopped) {
         const elapsed = performance.now() - t0;
-        if (speakDone && elapsed >= minHoldMs) break;
-        // Cap single line at 20s
-        if (elapsed > 20000) break;
+        if (lineDone && elapsed >= Math.min(minHoldMs, 500)) break;
+        if (elapsed > Math.max(minHoldMs + 500, 20000)) break;
 
-        const t = elapsed / 1000;
-        const zoom = 1 + Math.min(0.12, t * 0.02);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, w, h);
-        drawPanel(
+        drawFrame(
           ctx,
-          0,
-          0,
           w,
-          panelH,
-          sc.mood,
-          sc.visualPrompt || sc.title,
+          h,
+          sc,
+          headline,
+          caption,
           imgTop,
-          zoom,
+          imgBot,
+          elapsed / 1000,
         );
-        drawHeadline(ctx, w, panelH, midBand, headline);
-        drawPanel(
-          ctx,
-          0,
-          panelH + midBand,
-          w,
-          panelH,
-          sc.mood,
-          sc.title,
-          imgBot || imgTop,
-          1 + Math.min(0.08, t * 0.015),
-        );
-        ctx.fillStyle = "rgba(0,0,0,0.75)";
-        ctx.fillRect(0, h - 56, w, 56);
-        ctx.fillStyle = "#fff";
-        ctx.font = `600 ${Math.max(12, Math.floor(w * 0.035))}px system-ui,sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const sub = caption.length > 90 ? caption.slice(0, 87) + "…" : caption;
-        ctx.fillText(sub, w / 2, h - 28);
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 150));
     }
   }
 
-  // Hold last frame briefly for clean end
   await new Promise((r) => setTimeout(r, 400));
 
-  if (recording) {
+  if (recorder && recorder.state !== "inactive") {
     options.onRecordProgress?.("Finalizing file…");
-    const blob = await recording.stop();
+    const blob = await new Promise<Blob>((resolve) => {
+      recorder!.onstop = () => {
+        mixedStream?.getTracks().forEach((t) => t.stop());
+        resolve(new Blob(chunks, { type: recorder!.mimeType || mimeType }));
+      };
+      recorder!.stop();
+    });
+    try {
+      await audioCtx?.close();
+    } catch {
+      /* ignore */
+    }
     return {
       blob: blob.size > 0 ? blob : null,
-      mimeType: recording.mimeType,
-      extension: recording.extension,
-      hadAudioTrack: false,
+      mimeType,
+      extension,
+      hadAudioTrack,
     };
+  }
+
+  try {
+    await audioCtx?.close();
+  } catch {
+    /* ignore */
   }
 
   return empty;
