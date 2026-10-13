@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -11,12 +11,18 @@ import {
   Loader2,
   ChevronRight,
   AlertCircle,
+  Film,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { runMoviePipeline, getAgentCatalog } from "@/agents/orchestrator";
 import { stopVoice, type NarrationLine } from "@/agents/voice-agent";
 import type { StoryboardFrame } from "@/agents/video-agent";
 import type { AgentStageStatus, PipelineState } from "@/agents/types";
+import {
+  playScenesOnCanvas,
+  stopScenePlayer,
+  type PlayerScene,
+} from "@/agents/scene-player";
 import { cn } from "@/lib/utils";
 
 function StagePill({ status }: { status: AgentStageStatus }) {
@@ -51,6 +57,9 @@ export function ProducePage() {
     [movies, movieId],
   );
 
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stopRef = useRef({ stopped: false });
+
   const [pipeline, setPipeline] = useState<PipelineState>({
     script: "idle",
     voice: "idle",
@@ -63,6 +72,8 @@ export function ProducePage() {
   const [storyboard, setStoryboard] = useState<StoryboardFrame[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playingBoard, setPlayingBoard] = useState(false);
+  const [playingCinema, setPlayingCinema] = useState(false);
+  const [cinemaCaption, setCinemaCaption] = useState("");
   const [workerUrl, setWorkerUrl] = useState(
     () =>
       (typeof localStorage !== "undefined" &&
@@ -70,8 +81,9 @@ export function ProducePage() {
       "",
   );
   const [doScript, setDoScript] = useState(true);
-  const [doVoice, setDoVoice] = useState(true);
+  const [doVoice, setDoVoice] = useState(false);
   const [doVideo, setDoVideo] = useState(true);
+  const [headline, setHeadline] = useState("");
 
   const catalog = getAgentCatalog();
 
@@ -90,6 +102,8 @@ export function ProducePage() {
     if (!movieId || !movie) return;
     setRunning(true);
     stopVoice();
+    stopScenePlayer();
+    stopRef.current.stopped = true;
     setCurrentLine(null);
 
     if (workerUrl) {
@@ -144,6 +158,14 @@ export function ProducePage() {
         replaceCast: true,
         replaceScenes: true,
       });
+      if (!headline) {
+        setHeadline(
+          result.script.logline?.slice(0, 80) ||
+            (movie.language === "hi"
+              ? `${movie.title} — कहानी`
+              : `${movie.title} — the story`),
+        );
+      }
     }
     if (result.storyboard?.length) {
       setStoryboard(result.storyboard);
@@ -155,7 +177,10 @@ export function ProducePage() {
 
   function stopAll() {
     stopVoice();
+    stopScenePlayer();
+    stopRef.current.stopped = true;
     setPlayingBoard(false);
+    setPlayingCinema(false);
     setRunning(false);
     setCurrentLine(null);
   }
@@ -171,11 +196,67 @@ export function ProducePage() {
         return;
       }
       setFrameIndex(i);
-      const ms = Math.min(storyboard[i].durationSec, 12) * 1000;
+      const ms = Math.min(storyboard[i].durationSec, 8) * 1000;
       i += 1;
       window.setTimeout(tick, ms);
     };
     tick();
+  }
+
+  async function playCinematic() {
+    const canvas = canvasRef.current;
+    if (!canvas || !movie) return;
+
+    const scenesSrc =
+      movie.scenes.length > 0
+        ? movie.scenes.slice().sort((a, b) => a.order - b.order)
+        : storyboard.map((f, i) => ({
+            id: f.sceneId,
+            order: i,
+            title: f.title,
+            mood: f.mood,
+            dialogue: f.subtitle,
+            visualPrompt: f.visualPrompt,
+          }));
+
+    if (!scenesSrc.length) return;
+
+    const playerScenes: PlayerScene[] = scenesSrc.map((s) => ({
+      id: s.id,
+      title: s.title,
+      mood: s.mood,
+      dialogue: "dialogue" in s ? s.dialogue : undefined,
+      narration: "narration" in s ? (s as { narration?: string }).narration : undefined,
+      visualPrompt: s.visualPrompt,
+    }));
+
+    stopRef.current = { stopped: false };
+    setPlayingCinema(true);
+    setCinemaCaption("");
+
+    const hl =
+      headline.trim() ||
+      (movie.language === "hi"
+        ? `${movie.title}!`
+        : `${movie.title}`);
+
+    try {
+      await playScenesOnCanvas(
+        canvas,
+        playerScenes,
+        {
+          language: movie.language,
+          headline: hl,
+          width: 360,
+          height: 450,
+          onCaption: (t) => setCinemaCaption(t),
+          onScene: (i) => setFrameIndex(i),
+        },
+        stopRef.current,
+      );
+    } finally {
+      setPlayingCinema(false);
+    }
   }
 
   const frame = storyboard[frameIndex];
@@ -198,13 +279,13 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          Honest status: ~pipeline foundation. Free script + browser narration +
-          storyboard preview work now. Full avatar MP4 needs a free open-source
-          GPU worker you control — connect it below when ready.
+          Target style: illustrated scenes + Hindi/English dialogue voice +
+          captions (like short history reels). Free path = dual-panel player +
+          TTS + motion. Full AI character animation still needs image/video
+          models or a worker.
         </p>
       </div>
 
-      {/* Agent stages */}
       <section className="mb-4 space-y-2">
         {(
           [
@@ -227,30 +308,17 @@ export function ProducePage() {
         <p className="px-1 text-xs text-muted">{pipeline.lastMessage}</p>
       </section>
 
-      {/* Stage toggles */}
       <div className="mb-4 flex flex-wrap gap-3 text-xs">
         <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={doScript}
-            onChange={(e) => setDoScript(e.target.checked)}
-          />
+          <input type="checkbox" checked={doScript} onChange={(e) => setDoScript(e.target.checked)} />
           Script
         </label>
         <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={doVoice}
-            onChange={(e) => setDoVoice(e.target.checked)}
-          />
-          Voice
+          <input type="checkbox" checked={doVoice} onChange={(e) => setDoVoice(e.target.checked)} />
+          Voice (pipeline)
         </label>
         <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={doVideo}
-            onChange={(e) => setDoVideo(e.target.checked)}
-          />
+          <input type="checkbox" checked={doVideo} onChange={(e) => setDoVideo(e.target.checked)} />
           Video
         </label>
       </div>
@@ -272,12 +340,7 @@ export function ProducePage() {
             </>
           )}
         </button>
-        <button
-          type="button"
-          onClick={stopAll}
-          className="rounded-xl border border-border px-4 text-muted"
-          aria-label="Stop"
-        >
+        <button type="button" onClick={stopAll} className="rounded-xl border border-border px-4 text-muted" aria-label="Stop">
           <Square className="h-4 w-4" />
         </button>
       </div>
@@ -290,71 +353,92 @@ export function ProducePage() {
         </div>
       )}
 
-      {/* Storyboard player */}
+      {/* Cinematic player — structure closer to sample reel */}
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
-        <div
-          className="relative flex aspect-video items-end p-4"
-          style={{
-            background: frame?.backdrop || "linear-gradient(135deg,#1e293b,#0f172a)",
-          }}
-        >
-          <div className="w-full rounded-lg bg-black/50 p-3 backdrop-blur-sm">
-            <p className="text-xs text-white/70">
-              {frame
-                ? `Scene ${frameIndex + 1}/${storyboard.length} · ${frame.mood}`
-                : "Storyboard preview"}
-            </p>
-            <p className="font-medium text-white">
-              {frame?.title || "Run Video Agent to build frames"}
-            </p>
-            {frame?.subtitle && (
-              <p className="mt-1 text-sm text-white/80">{frame.subtitle}</p>
-            )}
-          </div>
+        <div className="border-b border-border px-3 py-2">
+          <p className="text-xs font-medium text-muted">Cinematic player (sample-style layout)</p>
+          <input
+            value={headline}
+            onChange={(e) => setHeadline(e.target.value)}
+            placeholder={movie.language === "hi" ? "शीर्षक कैप्शन (पीला टेक्स्ट)" : "Headline caption"}
+            className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+          />
         </div>
-        <div className="flex items-center gap-2 border-t border-border p-3">
+        <div className="flex justify-center bg-black py-2">
+          <canvas
+            ref={canvasRef}
+            width={360}
+            height={450}
+            className="max-w-full rounded-lg"
+            style={{ width: 360, height: 450, maxWidth: "100%" }}
+          />
+        </div>
+        {cinemaCaption && (
+          <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">
+            {cinemaCaption}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
+          <button
+            type="button"
+            disabled={playingCinema || (!movie.scenes.length && !storyboard.length)}
+            onClick={playCinematic}
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            {playingCinema ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Playing…
+              </>
+            ) : (
+              <>
+                <Film className="h-3.5 w-3.5" /> Play cinematic (voice + panels)
+              </>
+            )}
+          </button>
           <button
             type="button"
             disabled={!storyboard.length || playingBoard}
             onClick={playStoryboard}
             className="flex items-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-xs font-medium text-accent disabled:opacity-40"
           >
-            <Play className="h-3.5 w-3.5" /> Play storyboard
+            <Play className="h-3.5 w-3.5" /> Simple storyboard
           </button>
-          <span className="text-xs text-muted">
-            {storyboard.length
-              ? `${storyboard.length} frames (preview — not final MP4)`
-              : "No frames yet"}
-          </span>
         </div>
+        <p className="px-3 pb-3 text-[11px] text-muted">
+          This matches your sample's <strong className="text-fg">structure</strong>:
+          dual panels, bold caption, spoken dialogue. It does not yet paint AI
+          character illustrations like Flixier — upload scene images or connect a
+          free image worker to close that gap.
+        </p>
       </section>
 
-      {/* Worker upgrade */}
+      {frame && (
+        <div className="mb-4 rounded-xl border border-border bg-card p-3 text-xs text-muted">
+          Active frame: {frame.title} · {frame.mood}
+        </div>
+      )}
+
       <section className="mb-6 rounded-2xl border border-border bg-card p-4">
         <h2 className="mb-1 text-sm font-medium">Video worker (optional upgrade)</h2>
         <p className="mb-3 text-xs text-muted">
-          Point to your free self-hosted open-source worker (ComfyUI API, custom
-          FastAPI, etc.). Leave empty for storyboard-only mode.
+          For full AI illustrated frames / motion like your sample, point to a free
+          self-hosted worker later.
         </p>
         <input
           value={workerUrl}
           onChange={(e) => setWorkerUrl(e.target.value)}
-          placeholder="https://your-free-gpu-worker.example.com"
+          placeholder="https://your-free-worker.example.com"
           className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
         />
       </section>
 
-      {/* Agent catalog */}
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted">
           Agents & upgrade path
         </h2>
         <ul className="space-y-2">
           {catalog.map((a) => (
-            <li
-              key={a.id}
-              className="rounded-xl border border-border bg-card p-3"
-            >
+            <li key={a.id} className="rounded-xl border border-border bg-card p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">{a.name}</p>
                 <span className="text-[10px] text-muted">
