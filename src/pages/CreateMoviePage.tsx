@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { generateScript } from "@/lib/script-engine";
+import { BHARAT_TEMPLATES, type BharatTemplate } from "@/lib/bharat-templates";
 import type { Language, MovieDuration } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -33,11 +34,21 @@ export function CreateMoviePage() {
   const [duration, setDuration] = useState<MovieDuration>("5min");
   const [genres, setGenres] = useState<string[]>(["action", "romance"]);
   const [busy, setBusy] = useState<"idle" | "create" | "oneclick">("idle");
+  const [pickedTemplate, setPickedTemplate] = useState<string | null>(null);
 
   function toggleGenre(id: string) {
     setGenres((prev) =>
       prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id],
     );
+  }
+
+  function applyTemplate(tpl: BharatTemplate) {
+    setPickedTemplate(tpl.id);
+    setLanguage(tpl.language);
+    setDuration(tpl.duration);
+    setGenres(tpl.genres);
+    setTitle(tpl.language === "hi" ? tpl.titleHi : tpl.titleEn);
+    setIdea(tpl.language === "hi" ? tpl.ideaHi : tpl.ideaEn);
   }
 
   function handleCreateOnly() {
@@ -90,7 +101,7 @@ export function CreateMoviePage() {
 
   return (
     <main className="mx-auto max-w-lg px-4 pb-24 pt-6 sm:max-w-2xl">
-      <header className="mb-8 flex items-center gap-3">
+      <header className="mb-6 flex items-center gap-3">
         <Link
           to="/"
           className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-muted transition hover:bg-card"
@@ -102,6 +113,43 @@ export function CreateMoviePage() {
           <p className="text-sm text-muted">{t(ui, "newMovieSub")}</p>
         </div>
       </header>
+
+      {/* Phase 5 templates */}
+      <section className="mb-6">
+        <h2 className="mb-2 text-sm font-medium">
+          {language === "hi" ? "भारत टेम्पलेट" : "Bharat templates"}
+        </h2>
+        <p className="mb-3 text-xs text-muted">
+          {language === "hi"
+            ? "तैयार कहानी चुनें — फिर वन-क्लिक प्रोड्यूस"
+            : "Pick a ready story — then one-click produce"}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {BHARAT_TEMPLATES.map((tpl) => {
+            const active = pickedTemplate === tpl.id;
+            return (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => applyTemplate(tpl)}
+                className={cn(
+                  "rounded-xl border px-3 py-2.5 text-left transition",
+                  active
+                    ? "border-accent bg-accent/10"
+                    : "border-border bg-card hover:border-accent/40",
+                )}
+              >
+                <p className="text-xs font-semibold leading-tight">
+                  {language === "hi" ? tpl.titleHi : tpl.titleEn}
+                </p>
+                <p className="mt-1 text-[10px] text-muted">
+                  {language === "hi" ? tpl.tagHi : tpl.tagEn}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="space-y-6">
         <div>
@@ -201,10 +249,10 @@ export function CreateMoviePage() {
             onChange={(e) => setIdea(e.target.value)}
             placeholder={
               language === "hi"
-                ? "दो दोस्त, एक लड़ाई, और एक प्यार की कहानी... या पूरा स्क्रिप्ट पेस्ट करें"
-                : "Two rivals, a fierce fight under the rain, then a quiet romance gesture..."
+                ? "दो दोस्त, एक लड़ाई, और एक प्यार की कहानी..."
+                : "Two rivals, a fierce fight, then a quiet romance gesture..."
             }
-            rows={7}
+            rows={6}
             maxLength={4000}
             className="w-full resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm leading-relaxed outline-none focus:border-accent"
           />
