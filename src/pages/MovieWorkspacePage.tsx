@@ -14,12 +14,21 @@ import {
   Check,
   Settings2,
   Sparkles,
+  FileText,
+  Download,
+  Loader2,
+  Volume2,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import type { Language, MovieDuration, SceneMood } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  generateScript,
+  downloadTextFile,
+  type ScriptOutput,
+} from "@/lib/script-engine";
 
-type Tab = "details" | "cast" | "scenes";
+type Tab = "script" | "details" | "cast" | "scenes";
 
 const MOODS: { id: SceneMood; label: string; icon: typeof Swords }[] = [
   { id: "fight", label: "Fight", icon: Swords },
@@ -47,13 +56,14 @@ export function MovieWorkspacePage() {
   const addScene = useMovieStore((s) => s.addScene);
   const updateScene = useMovieStore((s) => s.updateScene);
   const removeScene = useMovieStore((s) => s.removeScene);
+  const applyScriptResult = useMovieStore((s) => s.applyScriptResult);
 
   const movie = useMemo(
     () => movies.find((m) => m.id === movieId) ?? null,
     [movies, movieId],
   );
 
-  const [tab, setTab] = useState<Tab>("cast");
+  const [tab, setTab] = useState<Tab>("script");
   const [charName, setCharName] = useState("");
   const [charRole, setCharRole] = useState("");
   const [charAppearance, setCharAppearance] = useState("");
@@ -62,7 +72,6 @@ export function MovieWorkspacePage() {
   const [sceneNotes, setSceneNotes] = useState("");
   const [sceneDialogue, setSceneDialogue] = useState("");
 
-  // Movie edit form
   const [editTitle, setEditTitle] = useState("");
   const [editSynopsis, setEditSynopsis] = useState("");
   const [editLanguage, setEditLanguage] = useState<Language>("en");
@@ -70,18 +79,20 @@ export function MovieWorkspacePage() {
   const [editGenres, setEditGenres] = useState<string[]>([]);
   const [savedFlash, setSavedFlash] = useState(false);
 
-  // Character inline edit
   const [editingCharId, setEditingCharId] = useState<string | null>(null);
   const [ecName, setEcName] = useState("");
   const [ecRole, setEcRole] = useState("");
   const [ecAppearance, setEcAppearance] = useState("");
 
-  // Scene inline edit
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [esTitle, setEsTitle] = useState("");
   const [esMood, setEsMood] = useState<SceneMood>("dialogue");
   const [esNotes, setEsNotes] = useState("");
   const [esDialogue, setEsDialogue] = useState("");
+
+  const [scriptPreview, setScriptPreview] = useState<ScriptOutput | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [genMessage, setGenMessage] = useState("");
 
   useEffect(() => {
     if (!movie) return;
@@ -111,9 +122,8 @@ export function MovieWorkspacePage() {
 
   function saveMovieDetails() {
     if (!movieId) return;
-    const title = editTitle.trim() || "Untitled Movie";
     updateMovie(movieId, {
-      title,
+      title: editTitle.trim() || "Untitled Movie",
       synopsis: editSynopsis.trim(),
       language: editLanguage,
       targetDuration: editDuration,
@@ -121,6 +131,77 @@ export function MovieWorkspacePage() {
     });
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 1600);
+  }
+
+  function runGenerateScript() {
+    if (!movieId || !movie) return;
+    setGenerating(true);
+    setGenMessage("");
+    // Small delay so UI can show loading state
+    window.setTimeout(() => {
+      try {
+        const result = generateScript({
+          title: movie.title,
+          idea: movie.synopsis || movie.title,
+          language: movie.language,
+          targetDuration: movie.targetDuration,
+          genres: movie.genres ?? [],
+        });
+        setScriptPreview(result);
+        applyScriptResult(movieId, result, {
+          replaceCast: true,
+          replaceScenes: true,
+        });
+        setGenMessage(
+          `Generated ${result.scenes.length} scenes and ${result.characters.length} characters.`,
+        );
+        setTab("script");
+      } catch {
+        setGenMessage("Generation failed. Try again.");
+      } finally {
+        setGenerating(false);
+      }
+    }, 350);
+  }
+
+  function speakScript() {
+    if (!scriptPreview && movie.scenes.length === 0) return;
+    const text =
+      scriptPreview?.fullScriptText ??
+      movie.scenes
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((s) => `${s.title}\n${s.dialogue ?? ""}`)
+        .join("\n\n");
+    if (!("speechSynthesis" in window)) {
+      setGenMessage("Speech not supported in this browser.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.slice(0, 4000));
+    u.lang = movie.language === "hi" ? "hi-IN" : "en-IN";
+    window.speechSynthesis.speak(u);
+  }
+
+  function downloadScript() {
+    const text =
+      scriptPreview?.fullScriptText ??
+      [
+        `TITLE: ${movie.title}`,
+        `"",
+        ...(movie.synopsis ? [movie.synopsis, ""] : []),
+        ...movie.scenes
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map(
+            (s, i) =>
+              `--- SCENE ${i + 1}: ${s.title} [${s.mood}] ---\n${s.dialogue ?? ""}\nVISUAL: ${s.visualPrompt ?? ""}`,
+          ),
+      ].join("\n");
+    downloadTextFile(
+      `${movie.title.replace(/[^\w\u0900-\u097F]+/g, "_") || "script"}.txt`,
+      text,
+    );
   }
 
   function onAddCharacter() {
@@ -211,6 +292,8 @@ export function MovieWorkspacePage() {
     reader.readAsDataURL(file);
   }
 
+  const sortedScenes = movie.scenes.slice().sort((a, b) => a.order - b.order);
+
   return (
     <main className="mx-auto max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
       <header className="mb-6 flex items-start gap-3">
@@ -227,23 +310,15 @@ export function MovieWorkspacePage() {
             {movie.characters.length} cast · {movie.scenes.length} scenes
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setTab("details")}
-          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-muted hover:border-accent hover:text-accent"
-          aria-label="Edit movie details"
-          title="Edit movie"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
       </header>
 
-      <div className="mb-6 grid grid-cols-3 gap-1 rounded-xl border border-border bg-card p-1">
+      <div className="mb-6 grid grid-cols-4 gap-1 rounded-xl border border-border bg-card p-1">
         {(
           [
-            { id: "details" as const, label: "Edit", icon: Settings2 },
+            { id: "script" as const, label: "Script", icon: FileText },
             { id: "cast" as const, label: "Cast", icon: Users },
             { id: "scenes" as const, label: "Scenes", icon: Clapperboard },
+            { id: "details" as const, label: "Edit", icon: Settings2 },
           ] as const
         ).map((t) => (
           <button
@@ -251,7 +326,7 @@ export function MovieWorkspacePage() {
             type="button"
             onClick={() => setTab(t.id)}
             className={cn(
-              "flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs font-medium transition sm:text-sm",
+              "flex flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-[10px] font-medium transition sm:flex-row sm:gap-1.5 sm:text-xs",
               tab === t.id
                 ? "bg-accent text-white"
                 : "text-muted hover:text-fg",
@@ -262,6 +337,91 @@ export function MovieWorkspacePage() {
           </button>
         ))}
       </div>
+
+      {tab === "script" && (
+        <section className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <h2 className="mb-1 text-sm font-medium">Script & scene output</h2>
+            <p className="mb-4 text-xs text-muted">
+              Free in-browser generator — no paid API. Creates dialogue, fight /
+              romance beats, cast, and a downloadable script from your story idea.
+            </p>
+            <button
+              type="button"
+              onClick={runGenerateScript}
+              disabled={generating}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Generate script + scenes
+                </>
+              )}
+            </button>
+            {genMessage && (
+              <p className="mt-3 text-center text-xs text-accent">{genMessage}</p>
+            )}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={downloadScript}
+                disabled={!scriptPreview && movie.scenes.length === 0}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-xs font-medium text-muted disabled:opacity-40"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download .txt
+              </button>
+              <button
+                type="button"
+                onClick={speakScript}
+                disabled={!scriptPreview && movie.scenes.length === 0}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-xs font-medium text-muted disabled:opacity-40"
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+                Read aloud
+              </button>
+            </div>
+          </div>
+
+          {scriptPreview && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted">
+                Logline
+              </p>
+              <p className="mt-1 text-sm">{scriptPreview.logline}</p>
+              <p className="mt-3 text-xs text-muted">{scriptPreview.note}</p>
+            </div>
+          )}
+
+          {(scriptPreview || sortedScenes.length > 0) && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <h3 className="mb-3 text-sm font-medium">Full script</h3>
+              <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs leading-relaxed text-fg/90">
+                {scriptPreview?.fullScriptText ??
+                  sortedScenes
+                    .map(
+                      (s, i) =>
+                        `--- SCENE ${i + 1}: ${s.title} [${s.mood}] ---\n${s.dialogue ?? ""}\n`,
+                    )
+                    .join("\n")}
+              </pre>
+            </div>
+          )}
+
+          {!scriptPreview && sortedScenes.length === 0 && (
+            <p className="py-10 text-center text-sm text-muted">
+              No script yet. Write a story idea under Edit, then tap{" "}
+              <strong className="text-fg">Generate script + scenes</strong>.
+            </p>
+          )}
+        </section>
+      )}
 
       {tab === "details" && (
         <section className="space-y-4">
@@ -277,7 +437,6 @@ export function MovieWorkspacePage() {
                   className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
                 />
               </div>
-
               <div>
                 <label className="mb-1.5 block text-xs text-muted">
                   Story / synopsis
@@ -290,7 +449,6 @@ export function MovieWorkspacePage() {
                   className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
                 />
               </div>
-
               <div>
                 <label className="mb-1.5 block text-xs text-muted">Language</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -316,7 +474,6 @@ export function MovieWorkspacePage() {
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="mb-1.5 block text-xs text-muted">
                   Target duration
@@ -344,7 +501,6 @@ export function MovieWorkspacePage() {
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="mb-1.5 block text-xs text-muted">Genres</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -370,23 +526,13 @@ export function MovieWorkspacePage() {
                   })}
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={saveMovieDetails}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white"
               >
-                {savedFlash ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Saved
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Save changes
-                  </>
-                )}
+                <Check className="h-4 w-4" />
+                {savedFlash ? "Saved" : "Save changes"}
               </button>
             </div>
           </div>
@@ -428,7 +574,6 @@ export function MovieWorkspacePage() {
               </button>
             </div>
           </div>
-
           <ul className="space-y-3">
             {movie.characters.map((c) => (
               <li
@@ -461,8 +606,7 @@ export function MovieWorkspacePage() {
                         onClick={saveCharacterEdit}
                         className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"
                       >
-                        <Check className="h-4 w-4" />
-                        Save
+                        <Check className="h-4 w-4" /> Save
                       </button>
                       <button
                         type="button"
@@ -490,9 +634,7 @@ export function MovieWorkspacePage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{c.name}</p>
-                      {c.role && (
-                        <p className="text-xs text-muted">{c.role}</p>
-                      )}
+                      {c.role && <p className="text-xs text-muted">{c.role}</p>}
                       {c.appearance && (
                         <p className="mt-1 line-clamp-2 text-xs text-muted">
                           {c.appearance}
@@ -505,10 +647,7 @@ export function MovieWorkspacePage() {
                           accept="image/*"
                           className="hidden"
                           onChange={(e) =>
-                            onReferenceImage(
-                              c.id,
-                              e.target.files?.[0] ?? null,
-                            )
+                            onReferenceImage(c.id, e.target.files?.[0] ?? null)
                           }
                         />
                       </label>
@@ -537,7 +676,7 @@ export function MovieWorkspacePage() {
             ))}
             {movie.characters.length === 0 && (
               <p className="py-8 text-center text-sm text-muted">
-                No characters yet. Add heroes, rivals, or love interests.
+                No cast yet. Generate a script or add characters manually.
               </p>
             )}
           </ul>
@@ -612,133 +751,129 @@ export function MovieWorkspacePage() {
           </div>
 
           <ul className="space-y-3">
-            {movie.scenes
-              .slice()
-              .sort((a, b) => a.order - b.order)
-              .map((sc, idx) => (
-                <li
-                  key={sc.id}
-                  className="rounded-2xl border border-border bg-card p-4"
-                >
-                  {editingSceneId === sc.id ? (
-                    <div className="space-y-3">
-                      <input
-                        value={esTitle}
-                        onChange={(e) => setEsTitle(e.target.value)}
-                        className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        {MOODS.map((m) => {
-                          const Icon = m.icon;
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => setEsMood(m.id)}
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
-                                esMood === m.id
-                                  ? "border-accent bg-accent/15 text-accent"
-                                  : "border-border text-muted",
-                              )}
-                            >
-                              <Icon className="h-3 w-3" />
-                              {m.label}
-                            </button>
-                          );
-                        })}
+            {sortedScenes.map((sc, idx) => (
+              <li
+                key={sc.id}
+                className="rounded-2xl border border-border bg-card p-4"
+              >
+                {editingSceneId === sc.id ? (
+                  <div className="space-y-3">
+                    <input
+                      value={esTitle}
+                      onChange={(e) => setEsTitle(e.target.value)}
+                      className="w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {MOODS.map((m) => {
+                        const Icon = m.icon;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setEsMood(m.id)}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
+                              esMood === m.id
+                                ? "border-accent bg-accent/15 text-accent"
+                                : "border-border text-muted",
+                            )}
+                          >
+                            <Icon className="h-3 w-3" />
+                            {m.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <textarea
+                      value={esNotes}
+                      onChange={(e) => setEsNotes(e.target.value)}
+                      placeholder="Gesture / action notes"
+                      rows={2}
+                      className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                    />
+                    <textarea
+                      value={esDialogue}
+                      onChange={(e) => setEsDialogue(e.target.value)}
+                      placeholder="Dialogue"
+                      rows={3}
+                      className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={saveSceneEdit}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"
+                      >
+                        <Check className="h-4 w-4" /> Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSceneId(null)}
+                        className="rounded-xl border border-border px-3 py-2 text-sm text-muted"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs text-muted">Scene {idx + 1}</p>
+                        <p className="font-medium">{sc.title}</p>
+                        <span className="mt-1 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs capitalize text-accent">
+                          {sc.mood}
+                        </span>
+                        {sc.gestureNotes && (
+                          <p className="mt-2 text-sm text-muted">
+                            {sc.gestureNotes}
+                          </p>
+                        )}
+                        {sc.dialogue && (
+                          <p className="mt-1 whitespace-pre-wrap text-sm">
+                            {sc.dialogue}
+                          </p>
+                        )}
                       </div>
-                      <textarea
-                        value={esNotes}
-                        onChange={(e) => setEsNotes(e.target.value)}
-                        placeholder="Gesture / action notes"
-                        rows={2}
-                        className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                      <textarea
-                        value={esDialogue}
-                        onChange={(e) => setEsDialogue(e.target.value)}
-                        placeholder="Dialogue"
-                        rows={3}
-                        className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
                         <button
                           type="button"
-                          onClick={saveSceneEdit}
-                          className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white"
+                          onClick={() => startEditScene(sc)}
+                          className="text-muted hover:text-accent"
+                          aria-label="Edit scene"
                         >
-                          <Check className="h-4 w-4" />
-                          Save
+                          <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEditingSceneId(null)}
-                          className="rounded-xl border border-border px-3 py-2 text-sm text-muted"
+                          onClick={() => removeScene(movie.id, sc.id)}
+                          className="text-muted hover:text-red-400"
+                          aria-label="Remove scene"
                         >
-                          Cancel
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-xs text-muted">Scene {idx + 1}</p>
-                          <p className="font-medium">{sc.title}</p>
-                          <span className="mt-1 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs capitalize text-accent">
-                            {sc.mood}
-                          </span>
-                          {sc.gestureNotes && (
-                            <p className="mt-2 text-sm text-muted">
-                              {sc.gestureNotes}
-                            </p>
-                          )}
-                          {sc.dialogue && (
-                            <p className="mt-1 line-clamp-3 text-sm">
-                              {sc.dialogue}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEditScene(sc)}
-                            className="text-muted hover:text-accent"
-                            aria-label="Edit scene"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeScene(movie.id, sc.id)}
-                            className="text-muted hover:text-red-400"
-                            aria-label="Remove scene"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-3">
-                        <label className="text-xs text-muted">Visual prompt</label>
-                        <input
-                          value={sc.visualPrompt ?? ""}
-                          onChange={(e) =>
-                            updateScene(movie.id, sc.id, {
-                              visualPrompt: e.target.value,
-                            })
-                          }
-                          placeholder="Describe the shot for later generation…"
-                          className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
-                        />
-                      </div>
-                    </>
-                  )}
-                </li>
-              ))}
+                    <div className="mt-3">
+                      <label className="text-xs text-muted">Visual prompt</label>
+                      <input
+                        value={sc.visualPrompt ?? ""}
+                        onChange={(e) =>
+                          updateScene(movie.id, sc.id, {
+                            visualPrompt: e.target.value,
+                          })
+                        }
+                        placeholder="Describe the shot…"
+                        className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                    </div>
+                  </>
+                )}
+              </li>
+            ))}
             {movie.scenes.length === 0 && (
               <p className="py-8 text-center text-sm text-muted">
-                No scenes yet. Add fight, romance, or dialogue beats.
+                No scenes yet. Use Script → Generate, or add scenes here.
               </p>
             )}
           </ul>
