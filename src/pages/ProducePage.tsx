@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Film,
   Download,
+  ImagePlus,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { runMoviePipeline, getAgentCatalog } from "@/agents/orchestrator";
@@ -25,6 +26,10 @@ import {
   downloadBlob,
   type PlayerScene,
 } from "@/agents/scene-player";
+import {
+  bindScenesForPlayer,
+  readImageAsDataUrl,
+} from "@/agents/visual-binder";
 import { cn } from "@/lib/utils";
 
 function StagePill({ status }: { status: AgentStageStatus }) {
@@ -53,6 +58,7 @@ export function ProducePage() {
   const { movieId } = useParams<{ movieId: string }>();
   const movies = useMovieStore((s) => s.movies);
   const applyScriptResult = useMovieStore((s) => s.applyScriptResult);
+  const updateScene = useMovieStore((s) => s.updateScene);
 
   const movie = useMemo(
     () => movies.find((m) => m.id === movieId) ?? null,
@@ -109,26 +115,35 @@ export function ProducePage() {
 
   function buildPlayerScenes(): PlayerScene[] {
     if (!movie) return [];
-    const scenesSrc =
-      movie.scenes.length > 0
-        ? movie.scenes.slice().sort((a, b) => a.order - b.order)
-        : storyboard.map((f, i) => ({
-            id: f.sceneId,
-            order: i,
-            title: f.title,
-            mood: f.mood,
-            dialogue: f.subtitle,
-            visualPrompt: f.visualPrompt,
-          }));
-    return scenesSrc.map((s) => ({
-      id: s.id,
-      title: s.title,
-      mood: s.mood,
-      dialogue: "dialogue" in s ? (s as { dialogue?: string }).dialogue : undefined,
-      narration:
-        "narration" in s ? (s as { narration?: string }).narration : undefined,
-      visualPrompt: s.visualPrompt,
+    if (movie.scenes.length > 0) {
+      return bindScenesForPlayer(movie.scenes, movie.characters);
+    }
+    return storyboard.map((f, i) => ({
+      id: f.sceneId,
+      title: f.title,
+      mood: f.mood,
+      dialogue: f.subtitle,
+      visualPrompt: f.visualPrompt,
     }));
+  }
+
+  async function onSceneImage(
+    sceneId: string,
+    slot: "top" | "bottom",
+    file: File | null,
+  ) {
+    if (!file || !movieId) return;
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      updateScene(movieId, sceneId, {
+        ...(slot === "top"
+          ? { imageTopLocal: dataUrl }
+          : { imageBottomLocal: dataUrl }),
+      });
+      setRecordStatus(`Scene art updated (${slot} panel).`);
+    } catch {
+      setRecordStatus("Could not read image.");
+    }
   }
 
   async function runPipeline() {
@@ -257,9 +272,8 @@ export function ProducePage() {
       headline.trim() ||
       (movie.language === "hi" ? `${movie.title}!` : `${movie.title}`);
 
-    // Higher res for export
     const width = record ? 540 : 360;
-    const height = record ? 675 : 450;
+    const height = record ? 676 : 450;
 
     try {
       const result = await playScenesOnCanvas(
@@ -289,12 +303,12 @@ export function ProducePage() {
           name,
         });
         setRecordStatus(
-          `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB). Captions burned in; system TTS is live-only.`,
+          `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB). Art + captions in file.`,
         );
         downloadBlob(result.blob, name);
       } else if (record) {
         setRecordStatus(
-          "Recording failed or empty — try Chrome/Firefox. Safari may need a re-run.",
+          "Recording failed — try Chrome/Firefox.",
         );
       } else {
         setRecordStatus("Playback finished.");
@@ -316,6 +330,7 @@ export function ProducePage() {
 
   const frame = storyboard[frameIndex];
   const busy = playingCinema || exporting || running;
+  const sortedScenes = movie.scenes.slice().sort((a, b) => a.order - b.order);
 
   return (
     <main className="mx-auto max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
@@ -328,17 +343,16 @@ export function ProducePage() {
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">Produce Movie</h1>
-          <p className="text-sm text-muted">{movie.title} · Agent pipeline</p>
+          <p className="text-sm text-muted">{movie.title} · Phase 1 visuals</p>
         </div>
       </header>
 
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          Export records the cinematic canvas to <strong className="text-fg">WebM</strong>{" "}
-          (Chrome/Android/Firefox) or <strong className="text-fg">MP4</strong> when the
-          browser supports it. Dialogue is burned into captions. Browser TTS is
-          heard while playing but is usually not embedded in the file.
+          Roadmap Phase 1: upload <strong className="text-fg">scene art</strong> or
+          cast faces (Cast tab) — they bind into dual panels on Play / Export.
+          Closer to Flixier layout when you add real images.
         </p>
       </div>
 
@@ -371,7 +385,7 @@ export function ProducePage() {
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={doVoice} onChange={(e) => setDoVoice(e.target.checked)} />
-          Voice (pipeline)
+          Voice
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={doVideo} onChange={(e) => setDoVideo(e.target.checked)} />
@@ -388,7 +402,7 @@ export function ProducePage() {
         >
           {running ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Running agents…
+              <Loader2 className="h-4 w-4 animate-spin" /> Running…
             </>
           ) : (
             <>
@@ -401,12 +415,89 @@ export function ProducePage() {
         </button>
       </div>
 
-      {currentLine && (
-        <div className="mb-4 rounded-xl border border-accent/40 bg-accent/10 p-3 text-sm">
-          <p className="text-xs text-accent">{currentLine.sceneTitle}</p>
-          <p className="font-medium">{currentLine.speaker}</p>
-          <p className="mt-1 text-muted">{currentLine.text}</p>
-        </div>
+      {/* Scene art uploads */}
+      {sortedScenes.length > 0 && (
+        <section className="mb-6 space-y-2">
+          <h2 className="text-sm font-medium">Scene art (dual panels)</h2>
+          <p className="text-xs text-muted">
+            Top + bottom images per scene. Or upload faces in Cast — auto-used.
+          </p>
+          <ul className="space-y-2">
+            {sortedScenes.slice(0, 8).map((sc, idx) => (
+              <li
+                key={sc.id}
+                className="rounded-xl border border-border bg-card p-3"
+              >
+                <p className="mb-2 text-xs font-medium">
+                  {idx + 1}. {sc.title}{" "}
+                  <span className="text-muted">({sc.mood})</span>
+                </p>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
+                      {sc.imageTopLocal ? (
+                        <img
+                          src={sc.imageTopLocal}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[10px] text-muted">
+                          Top
+                        </div>
+                      )}
+                    </div>
+                    <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
+                      <ImagePlus className="h-3 w-3" /> Top
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          onSceneImage(
+                            sc.id,
+                            "top",
+                            e.target.files?.[0] ?? null,
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="flex-1">
+                    <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
+                      {sc.imageBottomLocal ? (
+                        <img
+                          src={sc.imageBottomLocal}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[10px] text-muted">
+                          Bottom
+                        </div>
+                      )}
+                    </div>
+                    <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
+                      <ImagePlus className="h-3 w-3" /> Bottom
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          onSceneImage(
+                            sc.id,
+                            "bottom",
+                            e.target.files?.[0] ?? null,
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
@@ -417,7 +508,7 @@ export function ProducePage() {
             onChange={(e) => setHeadline(e.target.value)}
             placeholder={
               movie.language === "hi"
-                ? "शीर्षक कैप्शन (पीला टेक्स्ट)"
+                ? "शीर्षक कैप्शन"
                 : "Headline caption"
             }
             className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
@@ -429,7 +520,11 @@ export function ProducePage() {
             width={360}
             height={450}
             className="max-w-full rounded-lg"
-            style={{ width: "min(360px, 100%)", height: "auto", aspectRatio: "360/450" }}
+            style={{
+              width: "min(360px, 100%)",
+              height: "auto",
+              aspectRatio: "360/450",
+            }}
           />
         </div>
         {cinemaCaption && (
@@ -473,7 +568,7 @@ export function ProducePage() {
               onClick={redownload}
               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted"
             >
-              <Download className="h-3.5 w-3.5" /> Re-download .{lastExport.extension}
+              <Download className="h-3.5 w-3.5" /> Re-download
             </button>
           )}
           <button
@@ -482,7 +577,7 @@ export function ProducePage() {
             onClick={playStoryboard}
             className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted disabled:opacity-40"
           >
-            <Play className="h-3.5 w-3.5" /> Storyboard only
+            <Play className="h-3.5 w-3.5" /> Storyboard
           </button>
         </div>
       </section>
@@ -505,16 +600,14 @@ export function ProducePage() {
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted">
-          Agents & upgrade path
+          Agents
         </h2>
         <ul className="space-y-2">
           {catalog.map((a) => (
             <li key={a.id} className="rounded-xl border border-border bg-card p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">{a.name}</p>
-                <span className="text-[10px] text-muted">
-                  Q{a.qualityScore}/5 · {a.freeNow ? "free now" : "needs setup"}
-                </span>
+                <span className="text-[10px] text-muted">Q{a.qualityScore}/5</span>
               </div>
               <p className="mt-1 text-xs text-muted">{a.description}</p>
               <p className="mt-2 flex items-start gap-1 text-xs text-accent">
