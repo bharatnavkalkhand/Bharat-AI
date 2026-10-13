@@ -12,6 +12,7 @@ import {
   ChevronRight,
   AlertCircle,
   Film,
+  Download,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { runMoviePipeline, getAgentCatalog } from "@/agents/orchestrator";
@@ -21,6 +22,7 @@ import type { AgentStageStatus, PipelineState } from "@/agents/types";
 import {
   playScenesOnCanvas,
   stopScenePlayer,
+  downloadBlob,
   type PlayerScene,
 } from "@/agents/scene-player";
 import { cn } from "@/lib/utils";
@@ -73,7 +75,14 @@ export function ProducePage() {
   const [frameIndex, setFrameIndex] = useState(0);
   const [playingBoard, setPlayingBoard] = useState(false);
   const [playingCinema, setPlayingCinema] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [cinemaCaption, setCinemaCaption] = useState("");
+  const [recordStatus, setRecordStatus] = useState("");
+  const [lastExport, setLastExport] = useState<{
+    blob: Blob;
+    extension: "webm" | "mp4";
+    name: string;
+  } | null>(null);
   const [workerUrl, setWorkerUrl] = useState(
     () =>
       (typeof localStorage !== "undefined" &&
@@ -96,6 +105,30 @@ export function ProducePage() {
         </Link>
       </main>
     );
+  }
+
+  function buildPlayerScenes(): PlayerScene[] {
+    if (!movie) return [];
+    const scenesSrc =
+      movie.scenes.length > 0
+        ? movie.scenes.slice().sort((a, b) => a.order - b.order)
+        : storyboard.map((f, i) => ({
+            id: f.sceneId,
+            order: i,
+            title: f.title,
+            mood: f.mood,
+            dialogue: f.subtitle,
+            visualPrompt: f.visualPrompt,
+          }));
+    return scenesSrc.map((s) => ({
+      id: s.id,
+      title: s.title,
+      mood: s.mood,
+      dialogue: "dialogue" in s ? (s as { dialogue?: string }).dialogue : undefined,
+      narration:
+        "narration" in s ? (s as { narration?: string }).narration : undefined,
+      visualPrompt: s.visualPrompt,
+    }));
   }
 
   async function runPipeline() {
@@ -181,6 +214,7 @@ export function ProducePage() {
     stopRef.current.stopped = true;
     setPlayingBoard(false);
     setPlayingCinema(false);
+    setExporting(false);
     setRunning(false);
     setCurrentLine(null);
   }
@@ -203,63 +237,85 @@ export function ProducePage() {
     tick();
   }
 
-  async function playCinematic() {
+  async function runCinematic(record: boolean) {
     const canvas = canvasRef.current;
     if (!canvas || !movie) return;
-
-    const scenesSrc =
-      movie.scenes.length > 0
-        ? movie.scenes.slice().sort((a, b) => a.order - b.order)
-        : storyboard.map((f, i) => ({
-            id: f.sceneId,
-            order: i,
-            title: f.title,
-            mood: f.mood,
-            dialogue: f.subtitle,
-            visualPrompt: f.visualPrompt,
-          }));
-
-    if (!scenesSrc.length) return;
-
-    const playerScenes: PlayerScene[] = scenesSrc.map((s) => ({
-      id: s.id,
-      title: s.title,
-      mood: s.mood,
-      dialogue: "dialogue" in s ? s.dialogue : undefined,
-      narration: "narration" in s ? (s as { narration?: string }).narration : undefined,
-      visualPrompt: s.visualPrompt,
-    }));
+    const playerScenes = buildPlayerScenes();
+    if (!playerScenes.length) {
+      setRecordStatus("Generate a script / scenes first.");
+      return;
+    }
 
     stopRef.current = { stopped: false };
     setPlayingCinema(true);
+    setExporting(record);
     setCinemaCaption("");
+    setRecordStatus(record ? "Recording… keep this tab open" : "Playing…");
+    setLastExport(null);
 
     const hl =
       headline.trim() ||
-      (movie.language === "hi"
-        ? `${movie.title}!`
-        : `${movie.title}`);
+      (movie.language === "hi" ? `${movie.title}!` : `${movie.title}`);
+
+    // Higher res for export
+    const width = record ? 540 : 360;
+    const height = record ? 675 : 450;
 
     try {
-      await playScenesOnCanvas(
+      const result = await playScenesOnCanvas(
         canvas,
         playerScenes,
         {
           language: movie.language,
           headline: hl,
-          width: 360,
-          height: 450,
+          width,
+          height,
+          record,
           onCaption: (t) => setCinemaCaption(t),
           onScene: (i) => setFrameIndex(i),
+          onRecordProgress: (msg) => setRecordStatus(msg),
         },
         stopRef.current,
       );
+
+      if (record && result.blob) {
+        const safe =
+          movie.title.replace(/[^\w\u0900-\u097F]+/g, "_").slice(0, 40) ||
+          "bharat_ai_movie";
+        const name = `${safe}.${result.extension}`;
+        setLastExport({
+          blob: result.blob,
+          extension: result.extension,
+          name,
+        });
+        setRecordStatus(
+          `Ready: ${name} (${Math.round(result.blob.size / 1024)} KB). Captions burned in; system TTS is live-only.`,
+        );
+        downloadBlob(result.blob, name);
+      } else if (record) {
+        setRecordStatus(
+          "Recording failed or empty — try Chrome/Firefox. Safari may need a re-run.",
+        );
+      } else {
+        setRecordStatus("Playback finished.");
+      }
+    } catch (e) {
+      setRecordStatus(
+        e instanceof Error ? e.message : "Playback/export failed",
+      );
     } finally {
       setPlayingCinema(false);
+      setExporting(false);
     }
   }
 
+  function redownload() {
+    if (!lastExport) return;
+    downloadBlob(lastExport.blob, lastExport.name);
+  }
+
   const frame = storyboard[frameIndex];
+  const busy = playingCinema || exporting || running;
 
   return (
     <main className="mx-auto max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
@@ -279,10 +335,10 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          Target style: illustrated scenes + Hindi/English dialogue voice +
-          captions (like short history reels). Free path = dual-panel player +
-          TTS + motion. Full AI character animation still needs image/video
-          models or a worker.
+          Export records the cinematic canvas to <strong className="text-fg">WebM</strong>{" "}
+          (Chrome/Android/Firefox) or <strong className="text-fg">MP4</strong> when the
+          browser supports it. Dialogue is burned into captions. Browser TTS is
+          heard while playing but is usually not embedded in the file.
         </p>
       </div>
 
@@ -326,7 +382,7 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2">
         <button
           type="button"
-          disabled={running}
+          disabled={busy}
           onClick={runPipeline}
           className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
         >
@@ -353,14 +409,17 @@ export function ProducePage() {
         </div>
       )}
 
-      {/* Cinematic player — structure closer to sample reel */}
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
-          <p className="text-xs font-medium text-muted">Cinematic player (sample-style layout)</p>
+          <p className="text-xs font-medium text-muted">Cinematic player + export</p>
           <input
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
-            placeholder={movie.language === "hi" ? "शीर्षक कैप्शन (पीला टेक्स्ट)" : "Headline caption"}
+            placeholder={
+              movie.language === "hi"
+                ? "शीर्षक कैप्शन (पीला टेक्स्ट)"
+                : "Headline caption"
+            }
             className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
           />
         </div>
@@ -370,7 +429,7 @@ export function ProducePage() {
             width={360}
             height={450}
             className="max-w-full rounded-lg"
-            style={{ width: 360, height: 450, maxWidth: "100%" }}
+            style={{ width: "min(360px, 100%)", height: "auto", aspectRatio: "360/450" }}
           />
         </div>
         {cinemaCaption && (
@@ -378,38 +437,54 @@ export function ProducePage() {
             {cinemaCaption}
           </p>
         )}
+        {recordStatus && (
+          <p className="border-t border-border px-3 py-2 text-center text-xs text-accent">
+            {recordStatus}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
           <button
             type="button"
-            disabled={playingCinema || (!movie.scenes.length && !storyboard.length)}
-            onClick={playCinematic}
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            disabled={busy || (!movie.scenes.length && !storyboard.length)}
+            onClick={() => runCinematic(false)}
+            className="flex items-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-xs font-medium text-accent disabled:opacity-40"
           >
-            {playingCinema ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Playing…
-              </>
-            ) : (
-              <>
-                <Film className="h-3.5 w-3.5" /> Play cinematic (voice + panels)
-              </>
-            )}
+            <Film className="h-3.5 w-3.5" /> Play
           </button>
           <button
             type="button"
-            disabled={!storyboard.length || playingBoard}
-            onClick={playStoryboard}
-            className="flex items-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-xs font-medium text-accent disabled:opacity-40"
+            disabled={busy || (!movie.scenes.length && !storyboard.length)}
+            onClick={() => runCinematic(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
           >
-            <Play className="h-3.5 w-3.5" /> Simple storyboard
+            {exporting ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Exporting…
+              </>
+            ) : (
+              <>
+                <Download className="h-3.5 w-3.5" /> Export WebM/MP4
+              </>
+            )}
+          </button>
+          {lastExport && (
+            <button
+              type="button"
+              onClick={redownload}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted"
+            >
+              <Download className="h-3.5 w-3.5" /> Re-download .{lastExport.extension}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!storyboard.length || playingBoard || busy}
+            onClick={playStoryboard}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted disabled:opacity-40"
+          >
+            <Play className="h-3.5 w-3.5" /> Storyboard only
           </button>
         </div>
-        <p className="px-3 pb-3 text-[11px] text-muted">
-          This matches your sample's <strong className="text-fg">structure</strong>:
-          dual panels, bold caption, spoken dialogue. It does not yet paint AI
-          character illustrations like Flixier — upload scene images or connect a
-          free image worker to close that gap.
-        </p>
       </section>
 
       {frame && (
@@ -419,11 +494,7 @@ export function ProducePage() {
       )}
 
       <section className="mb-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-1 text-sm font-medium">Video worker (optional upgrade)</h2>
-        <p className="mb-3 text-xs text-muted">
-          For full AI illustrated frames / motion like your sample, point to a free
-          self-hosted worker later.
-        </p>
+        <h2 className="mb-1 text-sm font-medium">Video worker (optional)</h2>
         <input
           value={workerUrl}
           onChange={(e) => setWorkerUrl(e.target.value)}
