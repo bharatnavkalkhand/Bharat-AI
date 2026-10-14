@@ -164,11 +164,9 @@ export function ProducePage() {
     stopScenePlayer();
     stopRef.current.stopped = true;
     setCurrentLine(null);
-
     if (workerUrl) {
       localStorage.setItem("bharat_video_worker_url", workerUrl.trim());
     }
-
     const result = await runMoviePipeline(
       {
         movieId,
@@ -210,7 +208,6 @@ export function ProducePage() {
         onNarrationLine: (line) => setCurrentLine(line),
       },
     );
-
     setPipeline(result.pipeline);
     if (result.script) {
       applyScriptResult(movieId, result.script, {
@@ -271,21 +268,17 @@ export function ProducePage() {
       setRecordStatus("Generate a script / scenes first.");
       return;
     }
-
     stopRef.current = { stopped: false };
     setPlayingCinema(true);
     setExporting(record);
     setCinemaCaption("");
     setRecordStatus(record ? "Recording…" : "Playing…");
     setLastExport(null);
-
     const hl =
       headline.trim() ||
       (movie.language === "hi" ? `${movie.title}!` : `${movie.title}`);
-
     const width = record ? 540 : 360;
     const height = record ? 676 : 450;
-
     try {
       const result = await playScenesOnCanvas(
         canvas,
@@ -306,7 +299,6 @@ export function ProducePage() {
         },
         stopRef.current,
       );
-
       if (record && result.blob) {
         const safe =
           movie.title.replace(/[^\w\u0900-\u097F]+/g, "_").slice(0, 40) ||
@@ -355,8 +347,9 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          <strong className="text-fg">Web Image Agent:</strong> one tap pulls
-          public images by emotion & situation into every scene panel.
+          <strong className="text-fg">Multi-source images + face remix:</strong>{" "}
+          8–10 picks (Commons / Openverse / Met). Lips & expression overlay on
+          photos when Face remix is on.
         </p>
       </div>
 
@@ -508,6 +501,14 @@ export function ProducePage() {
             }
           }
         }}
+        onPickImage={(sceneId, slot, imageDataOrUrl) => {
+          if (!movieId) return;
+          updateScene(movieId, sceneId, {
+            ...(slot === "top"
+              ? { imageTopLocal: imageDataOrUrl }
+              : { imageBottomLocal: imageDataOrUrl }),
+          });
+        }}
         movie={{
           title: movie.title,
           language: movie.language,
@@ -542,7 +543,7 @@ export function ProducePage() {
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
           <p className="text-xs font-medium text-muted">
-            Cinematic · {dualScreen ? "dual" : "single"} · face · motion
+            Cinematic · {dualScreen ? "dual" : "single"} · face remix · motion
           </p>
           <input
             value={headline}
@@ -618,8 +619,8 @@ export function ProducePage() {
       )}
 
       <section className="mb-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-1 text-sm font-medium">AI motion / lip-sync worker (optional)</h2>
-        <p className="mb-2 text-xs text-muted">Photoreal lips: self-host MuseTalk / Wav2Lip</p>
+        <h2 className="mb-1 text-sm font-medium">Photoreal lip worker (optional)</h2>
+        <p className="mb-2 text-xs text-muted">MuseTalk / Wav2Lip self-host — face remix above is free overlay</p>
         <input
           value={workerUrl}
           onChange={(e) => setWorkerUrl(e.target.value)}
