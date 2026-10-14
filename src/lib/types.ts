@@ -8,7 +8,6 @@ export type Language = z.infer<typeof LanguageSchema>;
 export const MovieDurationSchema = z.enum(["5min", "10min"]);
 export type MovieDuration = z.infer<typeof MovieDurationSchema>;
 
-/** Scene mood / action tags for avatar movie effects */
 export const SceneMoodSchema = z.enum([
   "neutral",
   "romance",
@@ -48,7 +47,6 @@ export const CharacterSchema = z.object({
   personality: z.string().max(500).optional(),
   role: z.string().max(80).optional(),
   voiceId: z.string().optional(),
-  /** Remote or data URL for reference image (keeps avatar consistent) */
   referenceImageUrl: z.string().optional(),
   referenceImageLocal: z.string().optional(),
 });
@@ -62,10 +60,8 @@ export const SceneSchema = z.object({
   dialogue: z.string().max(3000).optional(),
   narration: z.string().max(3000).optional(),
   visualPrompt: z.string().max(1500).optional(),
-  /** Explicit mood for fight / romance / gesture generation */
   mood: SceneMoodSchema.default("neutral"),
   camera: z.string().max(300).optional(),
-  /** Gesture or action notes (e.g. "hand on heart", "sword clash") */
   gestureNotes: z.string().max(400).optional(),
   estimatedDurationSec: z.number().min(3).max(120).optional(),
   status: SceneStatusSchema.default("draft"),
@@ -73,9 +69,12 @@ export const SceneSchema = z.object({
   audioUrl: z.string().optional(),
   errorMessage: z.string().optional(),
   characterIds: z.array(z.string()).default([]),
-  /** Dual-panel art (data URLs) — Flixier-style layout */
+  /** Dual-panel art (data URLs) */
   imageTopLocal: z.string().optional(),
   imageBottomLocal: z.string().optional(),
+  /** C — external AI frame/clip from ReelShorts etc. */
+  externalImageLocal: z.string().optional(),
+  externalVideoLocal: z.string().optional(),
 });
 export type Scene = z.infer<typeof SceneSchema>;
 
@@ -85,7 +84,6 @@ export const MovieSchema = z.object({
   synopsis: z.string().max(2000).optional(),
   language: LanguageSchema.default("en"),
   targetDuration: MovieDurationSchema.default("5min"),
-  /** Genre hints that drive scene mood suggestions */
   genres: z.array(z.string()).default([]),
   characters: z.array(CharacterSchema).default([]),
   scenes: z.array(SceneSchema).default([]),
@@ -119,7 +117,6 @@ export const GenerationJobSchema = z.object({
 });
 export type GenerationJob = z.infer<typeof GenerationJobSchema>;
 
-/** Provider-independent media generation interface */
 export interface MediaProvider {
   id: string;
   name: string;
@@ -135,7 +132,6 @@ export interface MediaProvider {
   getResult(jobId: string): Promise<{ url: string } | null>;
 }
 
-/** Helper for building strong visual prompts from mood */
 export function moodToPromptHint(mood: SceneMood): string {
   switch (mood) {
     case "fight":
