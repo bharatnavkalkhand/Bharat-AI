@@ -39,6 +39,8 @@ export interface PlayerOptions {
   motionIntensity?: MotionIntensity;
   facePerformance?: boolean;
   useRhubarb?: boolean;
+  /** dual = top/bottom panels; single = full-frame */
+  layout?: "dual" | "single";
 }
 
 export interface PlayResult {
@@ -330,9 +332,8 @@ function drawFrame(
   cues: MouthCue[] | null,
   energy: Float32Array | null,
   durationSec: number,
+  layout: "dual" | "single" = "dual",
 ) {
-  const midBand = Math.floor(h * 0.14);
-  const panelH = Math.floor((h - midBand) / 2);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
   const faceOpts: FaceOpts = {
@@ -343,35 +344,60 @@ function drawFrame(
     energy,
     durationSec,
   };
-  drawPanel(
-    ctx,
-    0,
-    0,
-    w,
-    panelH,
-    sc.mood,
-    sc.visualPrompt || sc.title,
-    imgTop,
-    t,
-    intensity,
-    0,
-    faceOpts,
-  );
-  drawHeadline(ctx, w, panelH, midBand, headline);
-  drawPanel(
-    ctx,
-    0,
-    panelH + midBand,
-    w,
-    panelH,
-    sc.mood,
-    sc.title,
-    imgBot || imgTop,
-    t,
-    intensity,
-    0.7,
-    { ...faceOpts, speaking: false },
-  );
+
+  if (layout === "single") {
+    const captionH = 56;
+    const headH = Math.floor(h * 0.1);
+    const mainH = h - headH - captionH;
+    drawPanel(
+      ctx,
+      0,
+      0,
+      w,
+      mainH,
+      sc.mood,
+      sc.visualPrompt || sc.title,
+      imgTop || imgBot,
+      t,
+      intensity,
+      0,
+      faceOpts,
+    );
+    drawHeadline(ctx, w, mainH, headH, headline);
+  } else {
+    const midBand = Math.floor(h * 0.14);
+    const panelH = Math.floor((h - midBand) / 2);
+    drawPanel(
+      ctx,
+      0,
+      0,
+      w,
+      panelH,
+      sc.mood,
+      sc.visualPrompt || sc.title,
+      imgTop,
+      t,
+      intensity,
+      0,
+      faceOpts,
+    );
+    drawHeadline(ctx, w, panelH, midBand, headline);
+    drawPanel(
+      ctx,
+      0,
+      panelH + midBand,
+      w,
+      panelH,
+      sc.mood,
+      sc.title,
+      imgBot || imgTop,
+      t,
+      intensity,
+      0.7,
+      { ...faceOpts, speaking: false },
+    );
+  }
+
   const pulse = 0.72 + 0.08 * Math.sin(t * 6);
   ctx.fillStyle = `rgba(0,0,0,${pulse})`;
   ctx.fillRect(0, h - 56, w, 56);
@@ -406,6 +432,7 @@ export async function playScenesOnCanvas(
   const intensity: MotionIntensity = options.motionIntensity ?? "medium";
   const facePerformance = options.facePerformance !== false;
   const useRhubarb = options.useRhubarb !== false;
+  const layout = options.layout === "single" ? "single" : "dual";
   const headline =
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
@@ -618,6 +645,7 @@ export async function playScenesOnCanvas(
           cues,
           energy,
           durationSec,
+          layout,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
