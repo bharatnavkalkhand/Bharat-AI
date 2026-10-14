@@ -2,8 +2,8 @@ import type { Character, Scene } from "@/lib/types";
 import type { PlayerScene } from "./scene-player";
 
 /**
- * Maps movie scenes → player frames with images.
- * Priority: scene panel upload → character reference faces → none (mood art).
+ * Maps movie scenes → player frames.
+ * Priority: external import (ReelShorts etc.) → panel upload → cast face → none.
  */
 export function bindScenesForPlayer(
   scenes: Scene[],
@@ -16,11 +16,13 @@ export function bindScenesForPlayer(
 
   return sorted.map((sc, i) => {
     const top =
+      sc.externalImageLocal ||
       sc.imageTopLocal ||
       faces[i % Math.max(faces.length, 1)] ||
       faces[0];
     const bottom =
       sc.imageBottomLocal ||
+      sc.externalImageLocal ||
       faces[(i + 1) % Math.max(faces.length, 1)] ||
       faces[0] ||
       top;
@@ -46,6 +48,21 @@ export function readImageAsDataUrl(file: File): Promise<string> {
       else reject(new Error("Failed to read image"));
     };
     reader.onerror = () => reject(new Error("Failed to read image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** C — import frame from external AI app (image or first-frame of video later) */
+export function readMediaAsDataUrl(file: File): Promise<string> {
+  if (file.type.startsWith("image/")) return readImageAsDataUrl(file);
+  // Video: store as object URL string is not persistent; read as data URL if small
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Failed to read media"));
+    };
+    reader.onerror = () => reject(new Error("Failed to read media"));
     reader.readAsDataURL(file);
   });
 }
