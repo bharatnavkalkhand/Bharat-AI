@@ -1,5 +1,5 @@
 /**
- * Scene player: dual panel + caption + TTS + motion + Rhubarb lip-sync + export.
+ * Scene player: dual panel + caption + TTS + motion + accurate lip-sync + export.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -9,8 +9,9 @@ import {
 } from "./motion-engine";
 import { faceAnimAt, drawFaceOverlay } from "./expression-engine";
 import {
-  analyzeMouthCues,
-  visemeAtTime,
+  prepareLineLipSync,
+  smoothLipAtTime,
+  energyAt,
   type MouthCue,
 } from "./rhubarb-lipsync";
 
@@ -37,7 +38,6 @@ export interface PlayerOptions {
   embedAudio?: boolean;
   motionIntensity?: MotionIntensity;
   facePerformance?: boolean;
-  /** Prefer Rhubarb WASM when audio buffers exist */
   useRhubarb?: boolean;
 }
 
@@ -78,6 +78,8 @@ type FaceOpts = {
   textLen: number;
   enabled: boolean;
   cues?: MouthCue[] | null;
+  energy?: Float32Array | null;
+  durationSec?: number;
 };
 
 function drawPanel(
@@ -124,15 +126,19 @@ function drawPanel(
     ctx.drawImage(image, dx, dy, dw, dh);
 
     if (faceOpts?.enabled) {
-      const viseme = faceOpts.speaking
-        ? visemeAtTime(faceOpts.cues, t)
+      const e = faceOpts.speaking
+        ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
+        : undefined;
+      const smooth = faceOpts.speaking
+        ? smoothLipAtTime(faceOpts.cues, t, e)
         : null;
       const anim = faceAnimAt(
         mood,
         t,
         faceOpts.textLen,
         faceOpts.speaking,
-        viseme,
+        smooth?.viseme,
+        smooth,
       );
       drawFaceOverlay(ctx, x, y, w, h, anim);
     }
@@ -165,15 +171,19 @@ function drawPanel(
       );
     });
     if (faceOpts?.enabled) {
-      const viseme = faceOpts.speaking
-        ? visemeAtTime(faceOpts.cues, t)
+      const e = faceOpts.speaking
+        ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
+        : undefined;
+      const smooth = faceOpts.speaking
+        ? smoothLipAtTime(faceOpts.cues, t, e)
         : null;
       const anim = faceAnimAt(
         mood,
         t,
         faceOpts.textLen,
         faceOpts.speaking,
-        viseme,
+        smooth?.viseme,
+        smooth,
       );
       const cx = x + w / 2;
       const cy = y + h * 0.42;
@@ -318,6 +328,8 @@ function drawFrame(
   textLen: number,
   facePerformance: boolean,
   cues: MouthCue[] | null,
+  energy: Float32Array | null,
+  durationSec: number,
 ) {
   const midBand = Math.floor(h * 0.14);
   const panelH = Math.floor((h - midBand) / 2);
@@ -328,6 +340,8 @@ function drawFrame(
     textLen,
     enabled: facePerformance,
     cues,
+    energy,
+    durationSec,
   };
   drawPanel(
     ctx,
@@ -435,28 +449,41 @@ export async function playScenesOnCanvas(
     }
   }
 
-  // Rhubarb: precompute mouth cues per line when we have PCM buffers
   const lineCues: Array<MouthCue[] | null> = [];
+  const lineEnergy: Array<Float32Array | null> = [];
+  const lineDur: number[] = [];
   let usedRhubarb = false;
-  if (useRhubarb && facePerformance) {
-    options.onRecordProgress?.("Rhubarb lip-sync: analyzing visemes…");
+  if (facePerformance) {
+    options.onRecordProgress?.("Lip-sync: analyzing (Rhubarb + energy)…");
     for (let i = 0; i < timed.length; i++) {
       const line = timed[i];
-      if (line.buffer) {
-        const cues = await analyzeMouthCues(line.buffer, line.text);
+      const dur = line.durationSec || line.buffer?.duration || 2.5;
+      lineDur.push(dur);
+      if (useRhubarb) {
+        const { cues, energy } = await prepareLineLipSync(
+          line.buffer,
+          line.text,
+          dur,
+        );
         lineCues.push(cues);
-        if (cues?.length) usedRhubarb = true;
+        lineEnergy.push(energy);
+        if (cues && cues.length >= 2) usedRhubarb = true;
       } else {
         lineCues.push(null);
+        lineEnergy.push(null);
       }
     }
     options.onRecordProgress?.(
       usedRhubarb
-        ? "Rhubarb visemes ready — playing…"
-        : "Rhubarb unavailable — using rhythm lip-sync…",
+        ? "Accurate lip-sync ready (visemes + energy)…"
+        : "Text/energy lip-sync ready…",
     );
   } else {
-    for (let i = 0; i < timed.length; i++) lineCues.push(null);
+    for (let i = 0; i < timed.length; i++) {
+      lineCues.push(null);
+      lineEnergy.push(null);
+      lineDur.push(timed[i]?.durationSec ?? 2.5);
+    }
   }
 
   let mixedStream: MediaStream | null = null;
@@ -531,6 +558,8 @@ export async function playScenesOnCanvas(
 
       const line: TimedLine | undefined = timed[lineCursor];
       const cues = lineCues[lineCursor] ?? null;
+      const energy = lineEnergy[lineCursor] ?? null;
+      const durationSec = lineDur[lineCursor] ?? line?.durationSec ?? 2.5;
       lineCursor += 1;
 
       const t0 = performance.now();
@@ -587,6 +616,8 @@ export async function playScenesOnCanvas(
           textLen,
           facePerformance,
           cues,
+          energy,
+          durationSec,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
