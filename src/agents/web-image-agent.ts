@@ -1,8 +1,7 @@
 /**
  * Web Image Agent — multi-source free search
- * Sources: Wikimedia Commons, Openverse, Met Museum API
- * Returns 8–10 candidates per scene for agent/user pick.
- * ₹0 — no paid stock APIs.
+ * Sources: Wikimedia, Openverse, Met Museum, Art Institute of Chicago
+ * Returns 12+ candidates per scene.
  */
 
 import {
@@ -15,6 +14,7 @@ export type ImageSourceId =
   | "wikimedia"
   | "openverse"
   | "met"
+  | "artic"
   | "mixed"
   | "none";
 
@@ -29,7 +29,6 @@ export interface SceneImageFill {
   title: string;
   mood: string;
   queries: string[];
-  /** Up to ~10 options the agent found */
   candidates: ImageCandidate[];
   imageTop?: string;
   imageBottom?: string;
@@ -109,14 +108,12 @@ export function buildEmotionSituationQueries(
 
 async function searchOpenverse(
   query: string,
-  limit = 5,
+  limit = 6,
 ): Promise<ImageCandidate[]> {
   const q = encodeURIComponent(query.slice(0, 80));
   const url = `https://api.openverse.org/v1/images/?q=${q}&page_size=${limit}`;
   try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-    });
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) return [];
     const data = (await res.json()) as {
       results?: Array<{ url?: string; thumbnail?: string; title?: string }>;
@@ -158,9 +155,7 @@ async function searchMetMuseum(
             title?: string;
           };
           const img = obj.primaryImageSmall || obj.primaryImage;
-          if (img) {
-            out.push({ url: img, source: "met", title: obj.title });
-          }
+          if (img) out.push({ url: img, source: "met", title: obj.title });
         } catch {
           /* skip */
         }
@@ -172,21 +167,47 @@ async function searchMetMuseum(
   }
 }
 
-/** Aggregate 8–10 candidates from multiple free sources */
+async function searchArtic(
+  query: string,
+  limit = 4,
+): Promise<ImageCandidate[]> {
+  try {
+    const q = encodeURIComponent(query.slice(0, 60));
+    const url =
+      `https://api.artic.edu/api/v1/artworks/search?q=${q}` +
+      `&fields=id,title,image_id&limit=${limit}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      data?: Array<{ title?: string; image_id?: string | null }>;
+    };
+    return (data.data || [])
+      .filter((d) => d.image_id)
+      .map((d) => ({
+        url: `https://www.artic.edu/iiif/2/${d.image_id}/full/400,/0/default.jpg`,
+        source: "artic" as const,
+        title: d.title,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export async function searchMultiSource(
   query: string,
-  target = 10,
+  target = 14,
 ): Promise<ImageCandidate[]> {
-  const [wiki, open, met] = await Promise.all([
-    searchPublicImages(query, 4).then((urls) =>
+  const [wiki, open, met, artic] = await Promise.all([
+    searchPublicImages(query, 5).then((urls) =>
       urls.map((url) => ({ url, source: "wikimedia" as const })),
     ),
-    searchOpenverse(query, 5),
-    searchMetMuseum(query, 3),
+    searchOpenverse(query, 6),
+    searchMetMuseum(query, 4),
+    searchArtic(query, 4),
   ]);
   const merged: ImageCandidate[] = [];
   const seen = new Set<string>();
-  for (const c of [...wiki, ...open, ...met]) {
+  for (const c of [...wiki, ...open, ...met, ...artic]) {
     const key = c.url.split("?")[0];
     if (seen.has(key)) continue;
     seen.add(key);
@@ -233,22 +254,22 @@ export async function runWebImageAgent(opts: {
     const sc = sorted[i];
     opts.onProgress?.(
       language === "hi"
-        ? `मल्टी-सोर्स इमेज: सीन ${i + 1}/${sorted.length}…`
-        : `Multi-source images: scene ${i + 1}/${sorted.length}…`,
+        ? `मल्टी-सोर्स: सीन ${i + 1}/${sorted.length}…`
+        : `Multi-source: scene ${i + 1}/${sorted.length}…`,
     );
 
     const queries = buildEmotionSituationQueries(sc, title, language);
     let candidates: ImageCandidate[] = [];
 
     for (const q of queries) {
-      if (candidates.length >= 10) break;
-      const batch = await searchMultiSource(q, 10 - candidates.length);
+      if (candidates.length >= 14) break;
+      const batch = await searchMultiSource(q, 14 - candidates.length);
       for (const c of batch) {
         const key = c.url.split("?")[0];
         if (usedUrls.has(key)) continue;
         usedUrls.add(key);
         candidates.push(c);
-        if (candidates.length >= 10) break;
+        if (candidates.length >= 14) break;
       }
     }
 
@@ -276,25 +297,20 @@ export async function runWebImageAgent(opts: {
       fill.imageTop = material[0];
       filledCount += 1;
     }
-    if (layout === "dual" && material[1]) {
-      fill.imageBottom = material[1];
-    }
+    if (layout === "dual" && material[1]) fill.imageBottom = material[1];
 
     fills.push(fill);
   }
+
+  const avg =
+    fills.reduce((a, f) => a + f.candidates.length, 0) / Math.max(fills.length, 1);
 
   return {
     fills,
     filledCount,
     summary:
       language === "hi"
-        ? `${filledCount}/${sorted.length} सीन भरी · हर सीन ~${Math.round(
-            fills.reduce((a, f) => a + f.candidates.length, 0) /
-              Math.max(fills.length, 1),
-          )} विकल्प (Commons + Openverse + Met).`
-        : `Filled ${filledCount}/${sorted.length} scenes · ~${Math.round(
-            fills.reduce((a, f) => a + f.candidates.length, 0) /
-              Math.max(fills.length, 1),
-          )} options each (Commons + Openverse + Met).`,
+        ? `${filledCount}/${sorted.length} सीन · ~${Math.round(avg)} विकल्प (Commons+Openverse+Met+ArtIC).`
+        : `Filled ${filledCount}/${sorted.length} · ~${Math.round(avg)} options (Commons+Openverse+Met+ArtIC).`,
   };
 }
