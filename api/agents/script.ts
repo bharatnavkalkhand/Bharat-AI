@@ -4,7 +4,6 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
  * Optional free-tier LLM script enhancement.
  * - If GROQ_API_KEY is set (Groq free tier): uses llama model
  * - Else returns { useLocal: true } so client uses browser script engine
- * Never requires paid APIs. Keys only from env — never client.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -24,24 +23,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       useLocal: true,
       message:
-        "No free LLM key configured. Client will use browser Script Agent. Set GROQ_API_KEY (free tier) on Vercel to upgrade.",
+        "No free LLM key configured. Client will use browser Script Agent.",
     });
   }
 
   try {
     const lang = body.language === "hi" ? "Hindi" : "English";
     const prompt = `You are a film script assistant for short avatar movies (5-10 min).
+CRITICAL RULES:
+1. Follow the user's Idea/story EXACTLY. Do not invent a modern romance (Arjun/Meera) if the story is mythological or different.
+2. Characters must come from the story (e.g. Ram, Sita, elephant if that is the story).
+3. Never repeat the title in a loop (no "title: title: title:").
+4. Split the idea into ordered scenes that retell the plot.
+5. Dialogue and narration must match the plot events.
+
 Write a compact structured script in ${lang}.
 Title: ${body.title || "Untitled"}
-Idea: ${body.synopsis || ""}
+Idea (SOURCE OF TRUTH): ${body.synopsis || ""}
 Genres: ${(body.genres || []).join(", ")}
 Duration: ${body.targetDuration || "5min"}
 
 Return ONLY valid JSON with keys:
 logline (string), characters (array of {name, role, appearance}),
-scenes (array of {title, mood, dialogue, gestureNotes, visualPrompt, estimatedDurationSec}).
-mood must be one of: fight, romance, gesture, dialogue, action, emotional.
-Include fight and romance scenes when genres suggest them.`;
+scenes (array of {title, mood, dialogue, gestureNotes, visualPrompt, estimatedDurationSec, narration}).
+mood must be one of: fight, romance, gesture, dialogue, action, emotional, dramatic.`;
 
     const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -52,10 +57,10 @@ Include fight and romance scenes when genres suggest them.`;
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [
-          { role: "system", content: "Output JSON only. No markdown." },
+          { role: "system", content: "Output JSON only. No markdown. Follow the user's story exactly." },
           { role: "user", content: prompt },
         ],
-        temperature: 0.7,
+        temperature: 0.5,
         response_format: { type: "json_object" },
       }),
     });
