@@ -7,7 +7,9 @@ import {
 } from "@/agents/director-agent";
 import {
   runWebImageAgent,
+  materializeImage,
   type SceneImageFill,
+  type ImageCandidate,
 } from "@/agents/web-image-agent";
 import type { MotionIntensity } from "@/agents/motion-engine";
 
@@ -18,8 +20,13 @@ export interface DirectorControlsProps {
   onFacePerformanceChange: (v: boolean) => void;
   onMotionHint?: (m: MotionIntensity) => void;
   onStatus?: (msg: string) => void;
-  /** Called when agent auto-inserts web images into scenes */
   onApplyImages?: (fills: SceneImageFill[]) => void;
+  /** User picked one candidate for a scene panel */
+  onPickImage?: (
+    sceneId: string,
+    slot: "top" | "bottom",
+    imageDataOrUrl: string,
+  ) => void;
   movie: {
     title: string;
     language: "en" | "hi";
@@ -44,6 +51,7 @@ export function DirectorControls({
   onMotionHint,
   onStatus,
   onApplyImages,
+  onPickImage,
   movie,
 }: DirectorControlsProps) {
   const [busy, setBusy] = useState(false);
@@ -51,6 +59,8 @@ export function DirectorControls({
   const [text, setText] = useState("");
   const [report, setReport] = useState<DirectorReport | null>(null);
   const [lastFills, setLastFills] = useState<SceneImageFill[]>([]);
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
 
   async function runDirector() {
     if (!movie.scenes.length) {
@@ -89,8 +99,8 @@ export function DirectorControls({
     setFillBusy(true);
     onStatus?.(
       movie.language === "hi"
-        ? "वेब से emotion/situation इमेज ला रहे हैं…"
-        : "Pulling web images by emotion & situation…",
+        ? "3 sources se images…"
+        : "Searching 3 free sources…",
     );
     try {
       const layout: ScreenLayout = dualScreen ? "dual" : "single";
@@ -102,6 +112,7 @@ export function DirectorControls({
         onProgress: (msg) => onStatus?.(msg),
       });
       setLastFills(result.fills);
+      if (result.fills[0]) setActiveSceneId(result.fills[0].sceneId);
       onApplyImages?.(result.fills);
       onStatus?.(result.summary);
     } catch (e) {
@@ -111,11 +122,37 @@ export function DirectorControls({
     }
   }
 
+  async function pickCandidate(
+    sceneId: string,
+    slot: "top" | "bottom",
+    c: ImageCandidate,
+  ) {
+    setPicking(true);
+    onStatus?.("Applying selected image…");
+    try {
+      const data = await materializeImage(c.url);
+      onPickImage?.(sceneId, slot, data);
+      onStatus?.(`Panel ${slot}: ${c.source} image applied`);
+    } catch {
+      onPickImage?.(sceneId, slot, c.url);
+    } finally {
+      setPicking(false);
+    }
+  }
+
   const disabled = busy || fillBusy || !movie.scenes.length;
+  const activeFill =
+    lastFills.find((f) => f.sceneId === activeSceneId) || lastFills[0];
 
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-3">
-      <p className="mb-2 text-xs font-semibold text-fg">Mind + Web Image Agent</p>
+      <p className="mb-2 text-xs font-semibold text-fg">
+        Mind + Web Image Agent (multi-source)
+      </p>
+      <p className="mb-2 text-[10px] text-muted">
+        Face performance = brows + cheeks + lips remix on photo (not neural
+        Wav2Lip). Photoreal warp needs optional GPU worker.
+      </p>
 
       <label className="flex items-center gap-2 text-xs font-medium">
         <input
@@ -123,7 +160,7 @@ export function DirectorControls({
           checked={facePerformance}
           onChange={(e) => onFacePerformanceChange(e.target.checked)}
         />
-        Face performance (lip + expression)
+        Face remix on photos (lips + expression)
       </label>
       <label className="mt-3 flex items-center gap-2 text-xs font-medium">
         <input
@@ -133,9 +170,6 @@ export function DirectorControls({
         />
         Dual screen (top + bottom panels)
       </label>
-      <p className="mt-1 text-[11px] text-muted">
-        Uncheck for simple single full-frame screen.
-      </p>
 
       <button
         type="button"
@@ -144,16 +178,9 @@ export function DirectorControls({
         onClick={autoFillFromWeb}
       >
         {fillBusy
-          ? movie.language === "hi"
-            ? "वेब इमेज डाल रहे हैं…"
-            : "Inserting web images…"
-          : movie.language === "hi"
-            ? "वेब से इमेज ऑटो-डालो (emotion + situation)"
-            : "Auto-fill scenes from web (emotion + situation)"}
+          ? "Searching Commons + Openverse + Met…"
+          : "Auto-fill from web (8–10 options / scene)"}
       </button>
-      <p className="mt-1 text-[10px] text-muted">
-        Free Wikimedia search → agents place images into each scene panel.
-      </p>
 
       <button
         type="button"
@@ -161,64 +188,83 @@ export function DirectorControls({
         className="mt-2 w-full rounded-lg border border-accent/40 bg-accent/10 py-2.5 text-xs font-semibold text-accent disabled:opacity-40"
         onClick={runDirector}
       >
-        {busy ? "Director Agent…" : "Run Director / Mind Agent (plan only)"}
+        {busy ? "Director Agent…" : "Director plan only"}
       </button>
 
       {lastFills.length > 0 && (
         <div className="mt-3 space-y-2">
           <p className="text-[11px] font-medium text-muted">
-            Inserted ({lastFills.filter((f) => f.imageTop).length} scenes)
+            Scene · pick from candidates
           </p>
-          <div className="grid grid-cols-3 gap-2">
-            {lastFills.slice(0, 6).map((f) =>
-              f.imageTop ? (
-                <div key={f.sceneId} className="overflow-hidden rounded-lg border border-border">
-                  <img
-                    src={f.imageTop}
-                    alt=""
-                    className="aspect-video w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <p className="truncate px-1 py-0.5 text-[9px] text-muted">
-                    {f.mood}
-                  </p>
-                </div>
-              ) : null,
-            )}
+          <div className="flex flex-wrap gap-1">
+            {lastFills.map((f, i) => (
+              <button
+                key={f.sceneId}
+                type="button"
+                onClick={() => setActiveSceneId(f.sceneId)}
+                className={`rounded-full px-2 py-0.5 text-[10px] ${
+                  (activeFill?.sceneId || "") === f.sceneId
+                    ? "bg-accent text-white"
+                    : "bg-bg text-muted border border-border"
+                }`}
+              >
+                {i + 1}. {f.mood}
+              </button>
+            ))}
           </div>
+
+          {activeFill && (
+            <>
+              <p className="text-[10px] text-muted">
+                {activeFill.title} · {activeFill.candidates.length} options ·{" "}
+                {activeFill.source}
+              </p>
+              <div className="grid grid-cols-4 gap-1.5">
+                {activeFill.candidates.slice(0, 10).map((c, idx) => (
+                  <button
+                    key={c.url + idx}
+                    type="button"
+                    disabled={picking}
+                    title={`${c.source} — tap = top${dualScreen ? ", long = choose" : ""}`}
+                    className="relative overflow-hidden rounded-md border border-border disabled:opacity-50"
+                    onClick={() =>
+                      pickCandidate(activeFill.sceneId, "top", c)
+                    }
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (dualScreen)
+                        pickCandidate(activeFill.sceneId, "bottom", c);
+                    }}
+                  >
+                    <img
+                      src={c.url}
+                      alt=""
+                      className="aspect-square w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="absolute bottom-0 left-0 right-0 bg-black/60 px-0.5 text-[8px] text-white">
+                      {c.source}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted">
+                Tap → top panel{dualScreen ? " · Right-click → bottom" : ""}
+              </p>
+            </>
+          )}
         </div>
       )}
 
       {text && (
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-bg p-2 text-[10px] text-muted">
+        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-bg p-2 text-[10px] text-muted">
           {text}
         </pre>
       )}
 
-      {report &&
-        report.scenes.some((s) => s.suggestedImageUrls.length > 0) &&
-        !lastFills.length && (
-          <div className="mt-2 space-y-2">
-            <p className="text-[11px] font-medium text-muted">
-              Web suggestions (plan)
-            </p>
-            {report.scenes.slice(0, 4).map((s) =>
-              s.suggestedImageUrls[0] ? (
-                <div key={s.sceneId} className="flex items-center gap-2">
-                  <img
-                    src={s.suggestedImageUrls[0]}
-                    alt=""
-                    className="h-12 w-16 rounded object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="line-clamp-2 text-[10px] text-muted">
-                    {s.title}
-                  </span>
-                </div>
-              ) : null,
-            )}
-          </div>
-        )}
+      {report && !lastFills.length && (
+        <p className="mt-2 text-[10px] text-muted">{report.summary}</p>
+      )}
     </section>
   );
 }
