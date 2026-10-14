@@ -1,5 +1,5 @@
 /**
- * Scene player: dual/single + caption + TTS + motion + lip-sync + real-human avatar + export.
+ * Scene player: dual/single + caption + TTS + living motion + lip-sync + real-human avatar + export.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -41,7 +41,6 @@ export interface PlayerOptions {
   facePerformance?: boolean;
   useRhubarb?: boolean;
   layout?: "dual" | "single";
-  /** Real-human photo avatar or procedural head + lip morphs */
   use3dAvatar?: boolean;
 }
 
@@ -129,7 +128,10 @@ function drawPanel(
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
-    ctx.translate(mot.panX * 0.4, mot.panY * 0.4);
+    ctx.translate(
+      mot.panX * 0.5 + (mot.swayX || 0) * 0.6,
+      mot.panY * 0.5 + (mot.bobY || 0) * 0.8,
+    );
     drawAvatar3D(
       ctx,
       x,
@@ -152,8 +154,8 @@ function drawPanel(
     const scale = baseScale * mot.zoom;
     const dw = iw * scale;
     const dh = ih * scale;
-    const dx = x + (w - dw) / 2 + mot.panX;
-    const dy = y + (h - dh) / 2 + mot.panY;
+    const dx = x + (w - dw) / 2 + mot.panX + (mot.swayX || 0);
+    const dy = y + (h - dh) / 2 + mot.panY + (mot.bobY || 0);
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);
@@ -203,6 +205,7 @@ function drawPanel(
         smooth?.viseme,
         smooth,
       );
+      ctx.translate((mot.swayX || 0) * 0.5, (mot.bobY || 0) * 0.6);
       drawAvatar3D(ctx, x, y, w, h, mood, anim, t, null);
     } else {
       ctx.fillStyle = "rgba(255,255,255,0.14)";
@@ -415,7 +418,7 @@ export async function playScenesOnCanvas(
   };
   if (!ctx || !scenes.length) return empty;
 
-  const intensity: MotionIntensity = options.motionIntensity ?? "medium";
+  const intensity: MotionIntensity = options.motionIntensity ?? "high";
   const facePerformance = options.facePerformance !== false;
   const useRhubarb = options.useRhubarb !== false;
   const layout = options.layout === "single" ? "single" : "dual";
@@ -487,9 +490,6 @@ export async function playScenesOnCanvas(
         lineEnergy.push(null);
       }
     }
-    options.onRecordProgress?.(
-      usedRhubarb ? "Lip-sync ready (visemes)…" : "Energy lip-sync ready…",
-    );
   } else {
     for (let i = 0; i < timed.length; i++) {
       lineCues.push(null);
@@ -538,7 +538,6 @@ export async function playScenesOnCanvas(
         if (e.data && e.data.size > 0) chunks.push(e.data);
       };
       recorder.start(250);
-      options.onRecordProgress?.(`Recording ${extension.toUpperCase()}…`);
     }
   }
 
@@ -619,7 +618,6 @@ export async function playScenesOnCanvas(
   await new Promise((r) => setTimeout(r, 400));
 
   if (recorder && recorder.state !== "inactive") {
-    options.onRecordProgress?.("Finalizing file…");
     const blob = await new Promise<Blob>((resolve) => {
       recorder!.onstop = () => {
         mixedStream?.getTracks().forEach((tr) => tr.stop());
