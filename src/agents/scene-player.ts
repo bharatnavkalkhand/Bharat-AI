@@ -1,5 +1,5 @@
 /**
- * Scene player: dual/single + caption + TTS + motion + lip-sync + 3D avatar + export.
+ * Scene player: dual/single + caption + TTS + motion + lip-sync + real-human avatar + export.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -41,7 +41,7 @@ export interface PlayerOptions {
   facePerformance?: boolean;
   useRhubarb?: boolean;
   layout?: "dual" | "single";
-  /** Stylized 3D talking head with lip morphs */
+  /** Real-human photo avatar or procedural head + lip morphs */
   use3dAvatar?: boolean;
 }
 
@@ -130,7 +130,17 @@ function drawPanel(
     ctx.rect(x, y, w, h);
     ctx.clip();
     ctx.translate(mot.panX * 0.4, mot.panY * 0.4);
-    drawAvatar3D(ctx, x, y, w, h, mood, anim, t);
+    drawAvatar3D(
+      ctx,
+      x,
+      y,
+      w,
+      h,
+      mood,
+      anim,
+      t,
+      image && image.complete && image.naturalWidth ? image : null,
+    );
     ctx.restore();
     return;
   }
@@ -193,7 +203,7 @@ function drawPanel(
         smooth?.viseme,
         smooth,
       );
-      drawAvatar3D(ctx, x, y, w, h, mood, anim, t);
+      drawAvatar3D(ctx, x, y, w, h, mood, anim, t, null);
     } else {
       ctx.fillStyle = "rgba(255,255,255,0.14)";
       ctx.font = `600 ${Math.floor(w * 0.042)}px system-ui,sans-serif`;
