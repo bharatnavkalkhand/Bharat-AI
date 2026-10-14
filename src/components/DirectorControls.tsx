@@ -22,8 +22,8 @@ export interface DirectorControlsProps {
   onStatus?: (msg: string) => void;
   onApplyImages?: (fills: SceneImageFill[]) => void;
   onPickImage?: (
-    sceneId: string;
-    slot: "top" | "bottom";
+    sceneId: string,
+    slot: "top" | "bottom",
     imageDataOrUrl: string,
   ) => void;
   use3dAvatar?: boolean;
