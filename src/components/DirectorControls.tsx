@@ -146,7 +146,7 @@ export function DirectorControls({
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-3">
       <p className="mb-2 text-xs font-semibold text-fg">
-        Mind + Web Image + 3D Avatar
+        Mind + Web Image + Real Human Avatar
       </p>
 
       <label className="flex items-center gap-2 text-xs font-medium">
@@ -171,10 +171,11 @@ export function DirectorControls({
           checked={use3dAvatar}
           onChange={(e) => on3dAvatarChange?.(e.target.checked)}
         />
-        3D talking-head avatar (lip-sync morph)
+        Real human avatar (face photo + lip-sync)
       </label>
       <p className="mt-1 text-[10px] text-muted">
-        Canvas 3D head — jaw/lips follow Rhubarb + energy. No GPU.
+        Upload a clear front face on scene art (top). Avatar uses your real face
+        + lip-sync. No photo = painted human head.
       </p>
 
       <button
