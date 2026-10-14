@@ -21,12 +21,13 @@ export interface DirectorControlsProps {
   onMotionHint?: (m: MotionIntensity) => void;
   onStatus?: (msg: string) => void;
   onApplyImages?: (fills: SceneImageFill[]) => void;
-  /** User picked one candidate for a scene panel */
   onPickImage?: (
-    sceneId: string,
-    slot: "top" | "bottom",
+    sceneId: string;
+    slot: "top" | "bottom";
     imageDataOrUrl: string,
   ) => void;
+  use3dAvatar?: boolean;
+  on3dAvatarChange?: (v: boolean) => void;
   movie: {
     title: string;
     language: "en" | "hi";
@@ -52,6 +53,8 @@ export function DirectorControls({
   onStatus,
   onApplyImages,
   onPickImage,
+  use3dAvatar = false,
+  on3dAvatarChange,
   movie,
 }: DirectorControlsProps) {
   const [busy, setBusy] = useState(false);
@@ -97,11 +100,7 @@ export function DirectorControls({
       return;
     }
     setFillBusy(true);
-    onStatus?.(
-      movie.language === "hi"
-        ? "3 sources se images…"
-        : "Searching 3 free sources…",
-    );
+    onStatus?.("Searching 4 free sources…");
     try {
       const layout: ScreenLayout = dualScreen ? "dual" : "single";
       const result = await runWebImageAgent({
@@ -147,11 +146,7 @@ export function DirectorControls({
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-3">
       <p className="mb-2 text-xs font-semibold text-fg">
-        Mind + Web Image Agent (multi-source)
-      </p>
-      <p className="mb-2 text-[10px] text-muted">
-        Face performance = brows + cheeks + lips remix on photo (not neural
-        Wav2Lip). Photoreal warp needs optional GPU worker.
+        Mind + Web Image + 3D Avatar
       </p>
 
       <label className="flex items-center gap-2 text-xs font-medium">
@@ -160,7 +155,7 @@ export function DirectorControls({
           checked={facePerformance}
           onChange={(e) => onFacePerformanceChange(e.target.checked)}
         />
-        Face remix on photos (lips + expression)
+        Face remix / lip-sync on photos
       </label>
       <label className="mt-3 flex items-center gap-2 text-xs font-medium">
         <input
@@ -170,6 +165,17 @@ export function DirectorControls({
         />
         Dual screen (top + bottom panels)
       </label>
+      <label className="mt-3 flex items-center gap-2 text-xs font-medium">
+        <input
+          type="checkbox"
+          checked={use3dAvatar}
+          onChange={(e) => on3dAvatarChange?.(e.target.checked)}
+        />
+        3D talking-head avatar (lip-sync morph)
+      </label>
+      <p className="mt-1 text-[10px] text-muted">
+        Canvas 3D head — jaw/lips follow Rhubarb + energy. No GPU.
+      </p>
 
       <button
         type="button"
@@ -178,8 +184,8 @@ export function DirectorControls({
         onClick={autoFillFromWeb}
       >
         {fillBusy
-          ? "Searching Commons + Openverse + Met…"
-          : "Auto-fill from web (8–10 options / scene)"}
+          ? "Searching 4 free sources…"
+          : "Auto-fill from web (12+ options / scene)"}
       </button>
 
       <button
@@ -194,7 +200,7 @@ export function DirectorControls({
       {lastFills.length > 0 && (
         <div className="mt-3 space-y-2">
           <p className="text-[11px] font-medium text-muted">
-            Scene · pick from candidates
+            Scene · pick from 12+ candidates
           </p>
           <div className="flex flex-wrap gap-1">
             {lastFills.map((f, i) => (
@@ -220,12 +226,11 @@ export function DirectorControls({
                 {activeFill.source}
               </p>
               <div className="grid grid-cols-4 gap-1.5">
-                {activeFill.candidates.slice(0, 10).map((c, idx) => (
+                {activeFill.candidates.slice(0, 14).map((c, idx) => (
                   <button
                     key={c.url + idx}
                     type="button"
                     disabled={picking}
-                    title={`${c.source} — tap = top${dualScreen ? ", long = choose" : ""}`}
                     className="relative overflow-hidden rounded-md border border-border disabled:opacity-50"
                     onClick={() =>
                       pickCandidate(activeFill.sceneId, "top", c)
@@ -249,7 +254,7 @@ export function DirectorControls({
                 ))}
               </div>
               <p className="text-[9px] text-muted">
-                Tap → top panel{dualScreen ? " · Right-click → bottom" : ""}
+                Tap → top{dualScreen ? " · Right-click → bottom" : ""}
               </p>
             </>
           )}
