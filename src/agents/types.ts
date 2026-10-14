@@ -88,20 +88,21 @@ export const AGENT_CATALOG: AgentCapability[] = [
   },
   {
     id: "video",
-    name: "Video Agent",
+    name: "Video + Face Agent",
     description:
-      "Phase 4: dual-panel + mood motion (shake/pan/zoom) + export. True AI motion via optional worker.",
+      "Dual-panel, mood motion, Phase 6 face lip/expression overlays, WebM/MP4 export.",
     freeNow: true,
     qualityScore: 3,
     upgradePath:
-      "Deploy ComfyUI / AnimateDiff worker: POST /generate, GET /status/:id",
+      "Self-host Wav2Lip / MuseTalk / SadTalker for photoreal lip-sync; AnimateDiff for motion.",
   },
   {
     id: "orchestrator",
-    name: "Movie Orchestrator",
-    description: "Runs Script → Voice → Video stages and tracks progress.",
+    name: "Movie Orchestrator + Upgrade Agent",
+    description:
+      "Runs pipeline stages. Upgrade Agent lists public feature gaps (never reverse-engineers closed apps).",
     freeNow: true,
     qualityScore: 3,
-    upgradePath: "Add queue + Redis later when scaling beyond single-browser jobs.",
+    upgradePath: "Wire free GPU workers when you have Colab / HF Space / own GPU.",
   },
 ];
