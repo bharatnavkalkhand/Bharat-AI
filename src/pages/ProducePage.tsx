@@ -31,10 +31,6 @@ import {
   readImageAsDataUrl,
 } from "@/agents/visual-binder";
 import type { MotionIntensity } from "@/agents/motion-engine";
-import {
-  runUpgradeAgent,
-  formatUpgradeReport,
-} from "@/agents/upgrade-agent";
 import { DirectorControls } from "@/components/DirectorControls";
 import { runWebImageAgent } from "@/agents/web-image-agent";
 import { cn } from "@/lib/utils";
@@ -89,7 +85,6 @@ export function ProducePage() {
   const [facePerformance, setFacePerformance] = useState(true);
   const [dualScreen, setDualScreen] = useState(true);
   const [use3dAvatar, setUse3dAvatar] = useState(false);
-  const [upgradeText, setUpgradeText] = useState("");
   const catalog = getAgentCatalog();
 
   if (!movie) {
@@ -153,8 +148,8 @@ export function ProducePage() {
       try {
         setRecordStatus(
           movie.language === "hi"
-            ? "सीन के हिसाब से तस्वीरें जोड़ी जा रही हैं…"
-            : "Adding scene pictures automatically…",
+            ? "Cinematic art joḍi ja rahi hai…"
+            : "Adding cinematic scene art…",
         );
         const fills = await runWebImageAgent({
           title: result.script.title || movie.title,
@@ -188,12 +183,12 @@ export function ProducePage() {
       } catch {
         setRecordStatus(
           movie.language === "hi"
-            ? "ऑटो-इमेज आंशिक — Auto-fill आज़माएँ"
-            : "Auto-images partial — try Auto-fill",
+            ? "Auto-art partial — B button try karein"
+            : "Auto-art partial — try B button",
         );
       }
       if (!headline) {
-        setHeadline(result.script.logline?.slice(0, 80) || (movie.language === "hi" ? `${movie.title} — कहानी` : `${movie.title} — the story`));
+        setHeadline(result.script.logline?.slice(0, 80) || movie.title);
       }
     }
     if (result.storyboard?.length) {
@@ -241,7 +236,7 @@ export function ProducePage() {
     setCinemaCaption("");
     setRecordStatus(record ? "Recording…" : "Playing…");
     setLastExport(null);
-    const hl = headline.trim() || (movie.language === "hi" ? `${movie.title}!` : `${movie.title}`);
+    const hl = headline.trim() || movie.title;
     try {
       const result = await playScenesOnCanvas(
         canvas,
@@ -257,6 +252,7 @@ export function ProducePage() {
           facePerformance: facePerformance || use3dAvatar,
           layout: dualScreen ? "dual" : "single",
           use3dAvatar,
+          bodyPerformance: true,
           onCaption: (cap) => setCinemaCaption(cap),
           onScene: (i) => setFrameIndex(i),
           onRecordProgress: (msg) => setRecordStatus(msg),
@@ -303,8 +299,8 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          <strong className="text-fg">Auto pictures + motion:</strong> Script ke
-          baad scenes par web images auto-lagti hain. Play par zoom/pan/bob — static nahi.
+          <strong className="text-fg">A+B+C active:</strong> free worker ·
+          cinematic art search · import ReelShorts frames per scene.
         </p>
       </div>
 
@@ -354,7 +350,10 @@ export function ProducePage() {
                 <p className="mb-2 text-xs font-medium">{idx + 1}. {sc.title} <span className="text-muted">({sc.mood})</span></p>
                 <div className="flex gap-2">
                   {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => {
-                    const src = slot === "top" ? sc.imageTopLocal : sc.imageBottomLocal;
+                    const src =
+                      slot === "top"
+                        ? sc.externalImageLocal || sc.imageTopLocal
+                        : sc.imageBottomLocal;
                     return (
                       <div key={slot} className="flex-1">
                         <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
@@ -378,7 +377,7 @@ export function ProducePage() {
       )}
 
       <section className="mb-4 rounded-xl border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-medium">Motion intensity (character movement)</p>
+        <p className="mb-2 text-xs font-medium">Motion intensity</p>
         <div className="flex gap-2">
           {(["low", "medium", "high"] as MotionIntensity[]).map((level) => (
             <button key={level} type="button" onClick={() => setMotionIntensity(level)}
@@ -399,6 +398,16 @@ export function ProducePage() {
         onStatus={setRecordStatus}
         use3dAvatar={use3dAvatar}
         on3dAvatarChange={setUse3dAvatar}
+        workerUrl={workerUrl}
+        onWorkerUrlChange={setWorkerUrl}
+        movieId={movieId}
+        onImportExternal={(sceneId, dataUrl) => {
+          if (!movieId) return;
+          updateScene(movieId, sceneId, {
+            externalImageLocal: dataUrl,
+            imageTopLocal: dataUrl,
+          });
+        }}
         onApplyImages={(fills) => {
           if (!movieId) return;
           for (const f of fills) {
@@ -428,7 +437,7 @@ export function ProducePage() {
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
           <p className="text-xs font-medium text-muted">
-            Cinematic · motion {motionIntensity} · {use3dAvatar ? "3D/human" : dualScreen ? "dual" : "single"}
+            Cinematic · motion {motionIntensity}
           </p>
           <input value={headline} onChange={(e) => setHeadline(e.target.value)}
             placeholder={movie.language === "hi" ? "शीर्षक कैप्शन" : "Headline caption"}
