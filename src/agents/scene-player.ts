@@ -1,6 +1,5 @@
 /**
- * Scene player: dual panel + caption + TTS + motion + face expression/lip-sync + export.
- * Phase 6: client-side facial performance on still face images.
+ * Scene player: dual panel + caption + TTS + motion + Rhubarb lip-sync + export.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -9,6 +8,11 @@ import {
   type MotionIntensity,
 } from "./motion-engine";
 import { faceAnimAt, drawFaceOverlay } from "./expression-engine";
+import {
+  analyzeMouthCues,
+  visemeAtTime,
+  type MouthCue,
+} from "./rhubarb-lipsync";
 
 export interface PlayerScene {
   id: string;
@@ -32,8 +36,9 @@ export interface PlayerOptions {
   onRecordProgress?: (msg: string) => void;
   embedAudio?: boolean;
   motionIntensity?: MotionIntensity;
-  /** Phase 6: facial lip/expression overlays */
   facePerformance?: boolean;
+  /** Prefer Rhubarb WASM when audio buffers exist */
+  useRhubarb?: boolean;
 }
 
 export interface PlayResult {
@@ -41,6 +46,7 @@ export interface PlayResult {
   mimeType: string;
   extension: "webm" | "mp4";
   hadAudioTrack: boolean;
+  usedRhubarb?: boolean;
 }
 
 function parseTurns(dialogue: string): Array<{ speaker: string; text: string }> {
@@ -67,6 +73,13 @@ const MOOD_COLORS: Record<string, [string, string]> = {
   dramatic: ["#18181b", "#3f3f46"],
 };
 
+type FaceOpts = {
+  speaking: boolean;
+  textLen: number;
+  enabled: boolean;
+  cues?: MouthCue[] | null;
+};
+
 function drawPanel(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -79,7 +92,7 @@ function drawPanel(
   t: number,
   intensity: MotionIntensity,
   phase = 0,
-  faceOpts?: { speaking: boolean; textLen: number; enabled: boolean },
+  faceOpts?: FaceOpts,
 ) {
   const [c1, c2] = MOOD_COLORS[mood] || MOOD_COLORS.dialogue;
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
@@ -111,11 +124,15 @@ function drawPanel(
     ctx.drawImage(image, dx, dy, dw, dh);
 
     if (faceOpts?.enabled) {
+      const viseme = faceOpts.speaking
+        ? visemeAtTime(faceOpts.cues, t)
+        : null;
       const anim = faceAnimAt(
         mood,
         t,
         faceOpts.textLen,
         faceOpts.speaking,
+        viseme,
       );
       drawFaceOverlay(ctx, x, y, w, h, anim);
     }
@@ -147,9 +164,17 @@ function drawPanel(
         y + h / 2 + (i - 1) * 22 + mot.panY * 0.3,
       );
     });
-    // Stylized face placeholder when no image
     if (faceOpts?.enabled) {
-      const anim = faceAnimAt(mood, t, faceOpts.textLen, faceOpts.speaking);
+      const viseme = faceOpts.speaking
+        ? visemeAtTime(faceOpts.cues, t)
+        : null;
+      const anim = faceAnimAt(
+        mood,
+        t,
+        faceOpts.textLen,
+        faceOpts.speaking,
+        viseme,
+      );
       const cx = x + w / 2;
       const cy = y + h * 0.42;
       ctx.fillStyle = "rgba(255,220,200,0.25)";
@@ -292,12 +317,18 @@ function drawFrame(
   speaking: boolean,
   textLen: number,
   facePerformance: boolean,
+  cues: MouthCue[] | null,
 ) {
   const midBand = Math.floor(h * 0.14);
   const panelH = Math.floor((h - midBand) / 2);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
-  const faceOpts = { speaking, textLen, enabled: facePerformance };
+  const faceOpts: FaceOpts = {
+    speaking,
+    textLen,
+    enabled: facePerformance,
+    cues,
+  };
   drawPanel(
     ctx,
     0,
@@ -354,11 +385,13 @@ export async function playScenesOnCanvas(
     mimeType: "",
     extension: "webm",
     hadAudioTrack: false,
+    usedRhubarb: false,
   };
   if (!ctx || !scenes.length) return empty;
 
   const intensity: MotionIntensity = options.motionIntensity ?? "medium";
   const facePerformance = options.facePerformance !== false;
+  const useRhubarb = options.useRhubarb !== false;
   const headline =
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
@@ -400,6 +433,30 @@ export async function playScenesOnCanvas(
         durationSec: Math.max(2.2, Math.min(12, d.text.length / 14)),
       }));
     }
+  }
+
+  // Rhubarb: precompute mouth cues per line when we have PCM buffers
+  const lineCues: Array<MouthCue[] | null> = [];
+  let usedRhubarb = false;
+  if (useRhubarb && facePerformance) {
+    options.onRecordProgress?.("Rhubarb lip-sync: analyzing visemes…");
+    for (let i = 0; i < timed.length; i++) {
+      const line = timed[i];
+      if (line.buffer) {
+        const cues = await analyzeMouthCues(line.buffer, line.text);
+        lineCues.push(cues);
+        if (cues?.length) usedRhubarb = true;
+      } else {
+        lineCues.push(null);
+      }
+    }
+    options.onRecordProgress?.(
+      usedRhubarb
+        ? "Rhubarb visemes ready — playing…"
+        : "Rhubarb unavailable — using rhythm lip-sync…",
+    );
+  } else {
+    for (let i = 0; i < timed.length; i++) lineCues.push(null);
   }
 
   let mixedStream: MediaStream | null = null;
@@ -445,9 +502,7 @@ export async function playScenesOnCanvas(
       };
       recorder.start(250);
       options.onRecordProgress?.(
-        hadAudioTrack
-          ? `Recording ${extension.toUpperCase()} + audio + face…`
-          : `Recording ${extension.toUpperCase()} + face performance…`,
+        `Recording ${extension.toUpperCase()}${usedRhubarb ? " + Rhubarb" : ""}…`,
       );
     }
   }
@@ -475,6 +530,7 @@ export async function playScenesOnCanvas(
       options.onCaption?.(caption);
 
       const line: TimedLine | undefined = timed[lineCursor];
+      const cues = lineCues[lineCursor] ?? null;
       lineCursor += 1;
 
       const t0 = performance.now();
@@ -530,6 +586,7 @@ export async function playScenesOnCanvas(
           !lineDone,
           textLen,
           facePerformance,
+          cues,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
@@ -558,6 +615,7 @@ export async function playScenesOnCanvas(
       mimeType,
       extension,
       hadAudioTrack,
+      usedRhubarb,
     };
   }
 
@@ -567,5 +625,5 @@ export async function playScenesOnCanvas(
     /* ignore */
   }
 
-  return empty;
+  return { ...empty, usedRhubarb };
 }
