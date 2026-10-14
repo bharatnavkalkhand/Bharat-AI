@@ -1,13 +1,10 @@
 /**
  * Facial expression + lip overlay.
- * Supports Rhubarb visemes when cues available; else rhythm fallback.
+ * Prefers smoothLipAtTime (Rhubarb + energy); falls back to rhythm.
  */
 
-import type { RhubarbViseme } from "./rhubarb-lipsync";
-import {
-  lipOpenFromViseme,
-  widthFromViseme,
-} from "./rhubarb-lipsync";
+import type { RhubarbViseme, SmoothLipState } from "./rhubarb-lipsync";
+import { lipOpenFromViseme, widthFromViseme } from "./rhubarb-lipsync";
 
 export type FaceExpression =
   | "neutral"
@@ -19,7 +16,6 @@ export type FaceExpression =
 
 export interface FaceAnimState {
   expression: FaceExpression;
-  /** 0 closed → 1 open */
   lipOpen: number;
   lipWidth: number;
   browLift: number;
@@ -55,14 +51,21 @@ export function faceAnimAt(
   textLength: number,
   speaking: boolean,
   viseme?: RhubarbViseme | null,
+  smooth?: SmoothLipState | null,
 ): FaceAnimState {
   const expression = speaking ? "speak" : moodToExpression(mood);
   let lipOpen: number;
   let lipWidth = 1;
+  let v: RhubarbViseme | undefined;
 
-  if (speaking && viseme) {
+  if (speaking && smooth) {
+    lipOpen = smooth.lipOpen;
+    lipWidth = smooth.lipWidth;
+    v = smooth.viseme;
+  } else if (speaking && viseme) {
     lipOpen = lipOpenFromViseme(viseme);
     lipWidth = widthFromViseme(viseme);
+    v = viseme;
   } else {
     lipOpen = lipOpenAt(t, textLength, speaking);
   }
@@ -75,25 +78,25 @@ export function faceAnimAt(
         lipWidth,
         browLift: -0.4,
         eyeSquint: 0.55 + 0.1 * Math.sin(t * 3),
-        viseme: viseme || undefined,
+        viseme: v,
       };
     case "soft":
       return {
         expression,
-        lipOpen: speaking ? lipOpen * 0.9 : 0.12,
+        lipOpen: speaking ? lipOpen * 0.92 : 0.12,
         lipWidth,
         browLift: 0.25,
         eyeSquint: 0.1,
-        viseme: viseme || undefined,
+        viseme: v,
       };
     case "sad":
       return {
         expression,
-        lipOpen: speaking ? lipOpen * 0.75 : 0.06,
+        lipOpen: speaking ? lipOpen * 0.8 : 0.06,
         lipWidth,
         browLift: 0.35,
         eyeSquint: 0.35,
-        viseme: viseme || undefined,
+        viseme: v,
       };
     case "intense":
       return {
@@ -102,16 +105,16 @@ export function faceAnimAt(
         lipWidth,
         browLift: 0.15,
         eyeSquint: 0.4,
-        viseme: viseme || undefined,
+        viseme: v,
       };
     case "speak":
       return {
         expression,
         lipOpen,
         lipWidth,
-        browLift: 0.1 * Math.sin(t * 1.5),
-        eyeSquint: 0.15,
-        viseme: viseme || undefined,
+        browLift: 0.08 * Math.sin(t * 1.5),
+        eyeSquint: 0.12,
+        viseme: v,
       };
     default:
       return {
@@ -120,7 +123,7 @@ export function faceAnimAt(
         lipWidth,
         browLift: 0,
         eyeSquint: 0.05,
-        viseme: viseme || undefined,
+        viseme: v,
       };
   }
 }
@@ -135,9 +138,8 @@ export function drawFaceOverlay(
 ) {
   const cx = x + w / 2;
   const mouthY = y + h * 0.72;
-  const baseW = w * 0.22 * (anim.lipWidth || 1);
-  const mouthW = baseW;
-  const mouthH = h * 0.035 * (0.35 + anim.lipOpen * 2);
+  const mouthW = w * 0.22 * (anim.lipWidth || 1);
+  const mouthH = h * 0.035 * (0.32 + anim.lipOpen * 2.1);
 
   const vg = ctx.createRadialGradient(
     cx,
@@ -180,9 +182,8 @@ export function drawFaceOverlay(
     }
   }
 
-  // Viseme-specific mouth: B = lips closed line; F = bite; else ellipse
   const v = anim.viseme;
-  if (v === "B" || (anim.lipOpen < 0.12 && !v)) {
+  if (v === "B" || (anim.lipOpen < 0.1 && !v)) {
     ctx.strokeStyle = "rgba(120,50,60,0.9)";
     ctx.lineWidth = Math.max(2, w * 0.008);
     ctx.beginPath();
@@ -195,22 +196,22 @@ export function drawFaceOverlay(
     ctx.strokeStyle = "rgba(120,50,60,0.85)";
     ctx.strokeRect(cx - mouthW, mouthY - 2, mouthW * 2, 4);
   } else {
-    ctx.fillStyle = "rgba(40,10,15,0.75)";
+    ctx.fillStyle = "rgba(40,10,15,0.78)";
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW, mouthH, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, mouthY, mouthW, Math.max(1.5, mouthH), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(120,50,60,0.85)";
     ctx.lineWidth = Math.max(1.5, w * 0.006);
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW, mouthH, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, mouthY, mouthW, Math.max(1.5, mouthH), 0, 0, Math.PI * 2);
     ctx.stroke();
-    if (anim.lipOpen > 0.45) {
+    if (anim.lipOpen > 0.42) {
       ctx.fillStyle = "rgba(240,240,245,0.55)";
       ctx.fillRect(
         cx - mouthW * 0.55,
         mouthY - mouthH * 0.35,
         mouthW * 1.1,
-        mouthH * 0.35,
+        mouthH * 0.32,
       );
     }
   }
