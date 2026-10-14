@@ -1,5 +1,6 @@
 /**
- * Scene player: dual/single + caption + TTS + living motion + lip-sync + real-human avatar + export.
+ * Scene player: layered cinema — BG art + full-body motion + lips + export.
+ * Default path leaves static photo-frame loop.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -15,6 +16,10 @@ import {
   type MouthCue,
 } from "./rhubarb-lipsync";
 import { drawAvatar3D } from "./avatar-3d";
+import {
+  drawBodyPerformance,
+  drawSceneAtmosphere,
+} from "./body-performance";
 
 export interface PlayerScene {
   id: string;
@@ -42,6 +47,8 @@ export interface PlayerOptions {
   useRhubarb?: boolean;
   layout?: "dual" | "single";
   use3dAvatar?: boolean;
+  /** Full-body walk/fight/gesture — default ON */
+  bodyPerformance?: boolean;
 }
 
 export interface PlayResult {
@@ -84,6 +91,7 @@ type FaceOpts = {
   energy?: Float32Array | null;
   durationSec?: number;
   use3dAvatar?: boolean;
+  bodyPerformance?: boolean;
 };
 
 function drawPanel(
@@ -109,7 +117,8 @@ function drawPanel(
 
   const mot = motionAt(mood, t + phase, intensity);
 
-  if (faceOpts?.use3dAvatar && faceOpts.enabled) {
+  // Close-up face mode (optional)
+  if (faceOpts?.use3dAvatar && faceOpts.enabled && !faceOpts.bodyPerformance) {
     const e = faceOpts.speaking
       ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
       : undefined;
@@ -151,11 +160,11 @@ function drawPanel(
     const iw = image.naturalWidth;
     const ih = image.naturalHeight;
     const baseScale = Math.max(w / iw, h / ih);
-    const scale = baseScale * mot.zoom;
+    const scale = baseScale * mot.zoom * 1.05;
     const dw = iw * scale;
     const dh = ih * scale;
-    const dx = x + (w - dw) / 2 + mot.panX + (mot.swayX || 0);
-    const dy = y + (h - dh) / 2 + mot.panY + (mot.bobY || 0);
+    const dx = x + (w - dw) / 2 + mot.panX * 0.7;
+    const dy = y + (h - dh) / 2 + mot.panY * 0.7;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);
@@ -167,6 +176,7 @@ function drawPanel(
     }
     ctx.drawImage(image, dx, dy, dw, dh);
 
+    let anim = null as ReturnType<typeof faceAnimAt> | null;
     if (faceOpts?.enabled) {
       const e = faceOpts.speaking
         ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
@@ -174,7 +184,7 @@ function drawPanel(
       const smooth = faceOpts.speaking
         ? smoothLipAtTime(faceOpts.cues, t, e)
         : null;
-      const anim = faceAnimAt(
+      anim = faceAnimAt(
         mood,
         t,
         faceOpts.textLen,
@@ -182,7 +192,15 @@ function drawPanel(
         smooth?.viseme,
         smooth,
       );
-      drawFaceOverlay(ctx, x, y, w, h, anim);
+      if (faceOpts.bodyPerformance === false) {
+        drawFaceOverlay(ctx, x, y, w, h, anim);
+      }
+    }
+    drawSceneAtmosphere(ctx, x, y, w, h, t);
+    if (faceOpts?.bodyPerformance !== false) {
+      drawBodyPerformance(
+        ctx, x, y, w, h, mood, t, !!faceOpts?.speaking, anim,
+      );
     }
     ctx.restore();
   } else {
@@ -190,6 +208,7 @@ function drawPanel(
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
+    let anim = null as ReturnType<typeof faceAnimAt> | null;
     if (faceOpts?.enabled) {
       const e = faceOpts.speaking
         ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
@@ -197,7 +216,7 @@ function drawPanel(
       const smooth = faceOpts.speaking
         ? smoothLipAtTime(faceOpts.cues, t, e)
         : null;
-      const anim = faceAnimAt(
+      anim = faceAnimAt(
         mood,
         t,
         faceOpts.textLen,
@@ -205,7 +224,12 @@ function drawPanel(
         smooth?.viseme,
         smooth,
       );
-      ctx.translate((mot.swayX || 0) * 0.5, (mot.bobY || 0) * 0.6);
+    }
+    if (faceOpts?.bodyPerformance !== false) {
+      drawBodyPerformance(
+        ctx, x, y, w, h, mood, t, !!faceOpts?.speaking, anim,
+      );
+    } else if (faceOpts?.enabled && anim) {
       drawAvatar3D(ctx, x, y, w, h, mood, anim, t, null);
     } else {
       ctx.fillStyle = "rgba(255,255,255,0.14)";
@@ -351,6 +375,7 @@ function drawFrame(
   durationSec: number,
   layout: "dual" | "single" = "dual",
   use3dAvatar = false,
+  bodyPerformance = true,
 ) {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
@@ -362,6 +387,7 @@ function drawFrame(
     energy,
     durationSec,
     use3dAvatar,
+    bodyPerformance,
   };
 
   if (layout === "single") {
@@ -423,6 +449,8 @@ export async function playScenesOnCanvas(
   const useRhubarb = options.useRhubarb !== false;
   const layout = options.layout === "single" ? "single" : "dual";
   const use3dAvatar = options.use3dAvatar === true;
+  // Auto-select best free stack: body ON by default
+  const bodyPerformance = options.bodyPerformance !== false;
   const headline =
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
@@ -470,8 +498,8 @@ export async function playScenesOnCanvas(
   const lineEnergy: Array<Float32Array | null> = [];
   const lineDur: number[] = [];
   let usedRhubarb = false;
-  if (facePerformance || use3dAvatar) {
-    options.onRecordProgress?.("Lip-sync: Rhubarb + energy…");
+  if (facePerformance || bodyPerformance) {
+    options.onRecordProgress?.("Lip-sync + body performance…");
     for (let i = 0; i < timed.length; i++) {
       const line = timed[i];
       const dur = line.durationSec || line.buffer?.duration || 2.5;
@@ -607,11 +635,11 @@ export async function playScenesOnCanvas(
         drawFrame(
           ctx, w, h, sc, headline, caption, imgTop, imgBot,
           elapsed / 1000, intensity, !lineDone, textLen, facePerformance,
-          cues, energy, durationSec, layout, use3dAvatar,
+          cues, energy, durationSec, layout, use3dAvatar, bodyPerformance,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 120));
     }
   }
 
