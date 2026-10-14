@@ -1,6 +1,6 @@
 /**
- * Scene player: dual panel + caption + TTS + motion + MediaRecorder export.
- * Phase 4: mood-based cinematic motion (no GPU required).
+ * Scene player: dual panel + caption + TTS + motion + face expression/lip-sync + export.
+ * Phase 6: client-side facial performance on still face images.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -8,6 +8,7 @@ import {
   motionAt,
   type MotionIntensity,
 } from "./motion-engine";
+import { faceAnimAt, drawFaceOverlay } from "./expression-engine";
 
 export interface PlayerScene {
   id: string;
@@ -30,8 +31,9 @@ export interface PlayerOptions {
   record?: boolean;
   onRecordProgress?: (msg: string) => void;
   embedAudio?: boolean;
-  /** Phase 4 motion strength */
   motionIntensity?: MotionIntensity;
+  /** Phase 6: facial lip/expression overlays */
+  facePerformance?: boolean;
 }
 
 export interface PlayResult {
@@ -77,6 +79,7 @@ function drawPanel(
   t: number,
   intensity: MotionIntensity,
   phase = 0,
+  faceOpts?: { speaking: boolean; textLen: number; enabled: boolean },
 ) {
   const [c1, c2] = MOOD_COLORS[mood] || MOOD_COLORS.dialogue;
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
@@ -106,13 +109,22 @@ function drawPanel(
       ctx.translate(-(x + w / 2), -(y + h / 2));
     }
     ctx.drawImage(image, dx, dy, dw, dh);
+
+    if (faceOpts?.enabled) {
+      const anim = faceAnimAt(
+        mood,
+        t,
+        faceOpts.textLen,
+        faceOpts.speaking,
+      );
+      drawFaceOverlay(ctx, x, y, w, h, anim);
+    }
     ctx.restore();
   } else {
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
-    // Animated label drift for empty panels
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.font = `600 ${Math.floor(w * 0.042)}px system-ui,sans-serif`;
     ctx.textAlign = "center";
@@ -135,6 +147,17 @@ function drawPanel(
         y + h / 2 + (i - 1) * 22 + mot.panY * 0.3,
       );
     });
+    // Stylized face placeholder when no image
+    if (faceOpts?.enabled) {
+      const anim = faceAnimAt(mood, t, faceOpts.textLen, faceOpts.speaking);
+      const cx = x + w / 2;
+      const cy = y + h * 0.42;
+      ctx.fillStyle = "rgba(255,220,200,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, w * 0.18, h * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawFaceOverlay(ctx, x, y, w, h, anim);
+    }
     ctx.restore();
   }
 }
@@ -266,11 +289,15 @@ function drawFrame(
   imgBot: HTMLImageElement | null,
   t: number,
   intensity: MotionIntensity,
+  speaking: boolean,
+  textLen: number,
+  facePerformance: boolean,
 ) {
   const midBand = Math.floor(h * 0.14);
   const panelH = Math.floor((h - midBand) / 2);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
+  const faceOpts = { speaking, textLen, enabled: facePerformance };
   drawPanel(
     ctx,
     0,
@@ -283,6 +310,7 @@ function drawFrame(
     t,
     intensity,
     0,
+    faceOpts,
   );
   drawHeadline(ctx, w, panelH, midBand, headline);
   drawPanel(
@@ -297,8 +325,8 @@ function drawFrame(
     t,
     intensity,
     0.7,
+    { ...faceOpts, speaking: false },
   );
-  // Subtitle pulse lightly with speech
   const pulse = 0.72 + 0.08 * Math.sin(t * 6);
   ctx.fillStyle = `rgba(0,0,0,${pulse})`;
   ctx.fillRect(0, h - 56, w, 56);
@@ -330,6 +358,7 @@ export async function playScenesOnCanvas(
   if (!ctx || !scenes.length) return empty;
 
   const intensity: MotionIntensity = options.motionIntensity ?? "medium";
+  const facePerformance = options.facePerformance !== false;
   const headline =
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
@@ -417,8 +446,8 @@ export async function playScenesOnCanvas(
       recorder.start(250);
       options.onRecordProgress?.(
         hadAudioTrack
-          ? `Recording ${extension.toUpperCase()} + audio + motion…`
-          : `Recording ${extension.toUpperCase()} + motion…`,
+          ? `Recording ${extension.toUpperCase()} + audio + face…`
+          : `Recording ${extension.toUpperCase()} + face performance…`,
       );
     }
   }
@@ -480,6 +509,7 @@ export async function playScenesOnCanvas(
         2200,
         ((line?.durationSec ?? 2.5) * 1000) | 0,
       );
+      const textLen = turn.text.length;
 
       while (!signal?.stopped) {
         const elapsed = performance.now() - t0;
@@ -497,6 +527,9 @@ export async function playScenesOnCanvas(
           imgBot,
           elapsed / 1000,
           intensity,
+          !lineDone,
+          textLen,
+          facePerformance,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
