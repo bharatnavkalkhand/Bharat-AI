@@ -31,6 +31,10 @@ import {
   readImageAsDataUrl,
 } from "@/agents/visual-binder";
 import type { MotionIntensity } from "@/agents/motion-engine";
+import {
+  runUpgradeAgent,
+  formatUpgradeReport,
+} from "@/agents/upgrade-agent";
 import { cn } from "@/lib/utils";
 
 function StagePill({ status }: { status: AgentStageStatus }) {
@@ -102,6 +106,8 @@ export function ProducePage() {
   const [headline, setHeadline] = useState("");
   const [motionIntensity, setMotionIntensity] =
     useState<MotionIntensity>("medium");
+  const [facePerformance, setFacePerformance] = useState(true);
+  const [upgradeText, setUpgradeText] = useState("");
 
   const catalog = getAgentCatalog();
 
@@ -269,9 +275,7 @@ export function ProducePage() {
     setExporting(record);
     setCinemaCaption("");
     setRecordStatus(
-      record
-        ? "Fetching audio + recording with motion…"
-        : "Playing with motion…",
+      record ? "Recording with face + motion…" : "Playing with face performance…",
     );
     setLastExport(null);
 
@@ -294,6 +298,7 @@ export function ProducePage() {
           record,
           embedAudio: true,
           motionIntensity,
+          facePerformance,
           onCaption: (t) => setCinemaCaption(t),
           onScene: (i) => setFrameIndex(i),
           onRecordProgress: (msg) => setRecordStatus(msg),
@@ -313,8 +318,8 @@ export function ProducePage() {
         });
         setRecordStatus(
           result.hadAudioTrack
-            ? `Ready: ${name} — motion + embedded audio.`
-            : `Ready: ${name} — motion + captions.`,
+            ? `Ready: ${name} — face + motion + audio.`
+            : `Ready: ${name} — face + motion + captions.`,
         );
         downloadBlob(result.blob, name);
       } else if (record) {
@@ -352,16 +357,16 @@ export function ProducePage() {
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">Produce Movie</h1>
-          <p className="text-sm text-muted">{movie.title} · Phase 1–4</p>
+          <p className="text-sm text-muted">{movie.title} · Phase 1–6</p>
         </div>
       </header>
 
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          <strong className="text-fg">Phase 4:</strong> Mood-based motion
-          (fight shake, romance pan). Export embeds audio when TTS works. Upload
-          scene art; optional GPU worker for true AI motion.
+          <strong className="text-fg">Phase 6:</strong> Face expression + lip
+          aperture on dialogue. Upgrade Agent maps public feature gaps (no
+          proprietary reverse-engineering). Upload faces for best results.
         </p>
       </div>
 
@@ -471,7 +476,7 @@ export function ProducePage() {
       )}
 
       <section className="mb-4 rounded-xl border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-medium">Motion intensity (Phase 4)</p>
+        <p className="mb-2 text-xs font-medium">Motion intensity</p>
         <div className="flex gap-2">
           {(["low", "medium", "high"] as MotionIntensity[]).map((level) => (
             <button
@@ -489,14 +494,37 @@ export function ProducePage() {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-[11px] text-muted">
-          Fight/action = shake · Romance = slow pan · Works without GPU
+      </section>
+
+      <section className="mb-4 rounded-xl border border-border bg-card p-3">
+        <label className="flex items-center gap-2 text-xs font-medium">
+          <input
+            type="checkbox"
+            checked={facePerformance}
+            onChange={(e) => setFacePerformance(e.target.checked)}
+          />
+          Face performance (lip + expression)
+        </label>
+        <p className="mt-1 text-[11px] text-muted">
+          Client-side overlay — not photoreal Wav2Lip. Best with face photos.
         </p>
+        <button
+          type="button"
+          className="mt-3 w-full rounded-lg border border-border py-2 text-xs font-medium text-accent"
+          onClick={() => setUpgradeText(formatUpgradeReport(runUpgradeAgent()))}
+        >
+          Run Upgrade Agent (public gaps)
+        </button>
+        {upgradeText && (
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-bg p-2 text-[10px] text-muted">
+            {upgradeText}
+          </pre>
+        )}
       </section>
 
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
-          <p className="text-xs font-medium text-muted">Cinematic + motion + audio</p>
+          <p className="text-xs font-medium text-muted">Cinematic + face + motion</p>
           <input
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
@@ -579,9 +607,9 @@ export function ProducePage() {
       )}
 
       <section className="mb-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-1 text-sm font-medium">AI motion worker (optional Phase 4)</h2>
+        <h2 className="mb-1 text-sm font-medium">AI motion / lip-sync worker (optional)</h2>
         <p className="mb-2 text-xs text-muted">
-          Point to ComfyUI / AnimateDiff style API: POST /generate, GET /status/:id
+          For photoreal lips: self-host MuseTalk / Wav2Lip. Contract: POST /generate
         </p>
         <input
           value={workerUrl}
