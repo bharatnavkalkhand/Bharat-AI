@@ -1,6 +1,7 @@
 /**
- * Facial expression + lip overlay.
- * Prefers smoothLipAtTime (Rhubarb + energy); falls back to rhythm.
+ * Facial expression + lip overlay ("face remix" on photo panels).
+ * Not photoreal neural warp — visible client-side performance on faces.
+ * Prefers Rhubarb + energy; falls back to speech rhythm.
  */
 
 import type { RhubarbViseme, SmoothLipState } from "./rhubarb-lipsync";
@@ -20,6 +21,7 @@ export interface FaceAnimState {
   lipWidth: number;
   browLift: number;
   eyeSquint: number;
+  cheek: number;
   viseme?: RhubarbViseme;
 }
 
@@ -38,10 +40,10 @@ export function lipOpenAt(
   textLength: number,
   speaking: boolean,
 ): number {
-  if (!speaking) return 0.05 + 0.02 * Math.sin(t * 2);
-  const rate = 8 + Math.min(6, textLength / 40);
-  const jaw = 0.35 + 0.55 * Math.abs(Math.sin(t * rate));
-  const flutter = 0.12 * Math.abs(Math.sin(t * rate * 2.3));
+  if (!speaking) return 0.06 + 0.03 * Math.sin(t * 2);
+  const rate = 9 + Math.min(7, textLength / 35);
+  const jaw = 0.42 + 0.52 * Math.abs(Math.sin(t * rate));
+  const flutter = 0.14 * Math.abs(Math.sin(t * rate * 2.4));
   return Math.min(1, jaw + flutter);
 }
 
@@ -59,11 +61,11 @@ export function faceAnimAt(
   let v: RhubarbViseme | undefined;
 
   if (speaking && smooth) {
-    lipOpen = smooth.lipOpen;
+    lipOpen = Math.max(smooth.lipOpen, 0.2);
     lipWidth = smooth.lipWidth;
     v = smooth.viseme;
   } else if (speaking && viseme) {
-    lipOpen = lipOpenFromViseme(viseme);
+    lipOpen = Math.max(lipOpenFromViseme(viseme), 0.2);
     lipWidth = widthFromViseme(viseme);
     v = viseme;
   } else {
@@ -74,37 +76,41 @@ export function faceAnimAt(
     case "angry":
       return {
         expression,
-        lipOpen: speaking ? lipOpen : 0.08,
-        lipWidth,
-        browLift: -0.4,
-        eyeSquint: 0.55 + 0.1 * Math.sin(t * 3),
+        lipOpen: speaking ? lipOpen : 0.12,
+        lipWidth: lipWidth * 0.92,
+        browLift: -0.55,
+        eyeSquint: 0.65 + 0.1 * Math.sin(t * 3),
+        cheek: 0.15,
         viseme: v,
       };
     case "soft":
       return {
         expression,
-        lipOpen: speaking ? lipOpen * 0.92 : 0.12,
+        lipOpen: speaking ? lipOpen * 0.9 : 0.14,
         lipWidth,
-        browLift: 0.25,
-        eyeSquint: 0.1,
+        browLift: 0.28,
+        eyeSquint: 0.12,
+        cheek: 0.45 + 0.08 * Math.sin(t * 1.2),
         viseme: v,
       };
     case "sad":
       return {
         expression,
-        lipOpen: speaking ? lipOpen * 0.8 : 0.06,
-        lipWidth,
-        browLift: 0.35,
-        eyeSquint: 0.35,
+        lipOpen: speaking ? lipOpen * 0.75 : 0.08,
+        lipWidth: lipWidth * 0.95,
+        browLift: 0.4,
+        eyeSquint: 0.4,
+        cheek: 0.08,
         viseme: v,
       };
     case "intense":
       return {
         expression,
-        lipOpen: speaking ? lipOpen : 0.1,
+        lipOpen: speaking ? lipOpen : 0.12,
         lipWidth,
-        browLift: 0.15,
-        eyeSquint: 0.4,
+        browLift: 0.2,
+        eyeSquint: 0.45,
+        cheek: 0.2,
         viseme: v,
       };
     case "speak":
@@ -112,22 +118,29 @@ export function faceAnimAt(
         expression,
         lipOpen,
         lipWidth,
-        browLift: 0.08 * Math.sin(t * 1.5),
-        eyeSquint: 0.12,
+        browLift: 0.1 * Math.sin(t * 1.5),
+        eyeSquint: 0.15,
+        cheek: 0.22 + 0.1 * lipOpen,
         viseme: v,
       };
     default:
       return {
         expression: "neutral",
-        lipOpen: speaking ? lipOpen : 0.05,
+        lipOpen: speaking ? lipOpen : 0.06,
         lipWidth,
         browLift: 0,
-        eyeSquint: 0.05,
+        eyeSquint: 0.06,
+        cheek: 0.05,
         viseme: v,
       };
   }
 }
 
+/**
+ * Draw a clear face remix on the panel:
+ * assumes subject roughly center — mouth lower-middle third.
+ * Bigger, higher-contrast lips so motion is obvious on photos.
+ */
 export function drawFaceOverlay(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -137,81 +150,120 @@ export function drawFaceOverlay(
   anim: FaceAnimState,
 ) {
   const cx = x + w / 2;
-  const mouthY = y + h * 0.72;
-  const mouthW = w * 0.22 * (anim.lipWidth || 1);
-  const mouthH = h * 0.035 * (0.32 + anim.lipOpen * 2.1);
+  // Face band: middle of portrait-style crop
+  const faceTop = y + h * 0.22;
+  const faceH = h * 0.55;
+  const mouthY = faceTop + faceH * 0.72;
+  const mouthW = w * 0.16 * (anim.lipWidth || 1);
+  const mouthH = Math.max(3, h * 0.028 * (0.4 + anim.lipOpen * 2.6));
 
-  const vg = ctx.createRadialGradient(
+  // Soft focus ring so remix reads on busy photos
+  const ring = ctx.createRadialGradient(
     cx,
-    y + h * 0.45,
-    w * 0.1,
+    faceTop + faceH * 0.45,
+    w * 0.08,
     cx,
-    y + h * 0.5,
-    w * 0.55,
+    faceTop + faceH * 0.5,
+    w * 0.42,
   );
-  vg.addColorStop(0, "rgba(0,0,0,0)");
-  vg.addColorStop(1, "rgba(0,0,0,0.18)");
-  ctx.fillStyle = vg;
+  ring.addColorStop(0, "rgba(0,0,0,0)");
+  ring.addColorStop(0.7, "rgba(0,0,0,0.05)");
+  ring.addColorStop(1, "rgba(0,0,0,0.22)");
+  ctx.fillStyle = ring;
   ctx.fillRect(x, y, w, h);
 
-  ctx.strokeStyle = `rgba(20,20,20,${0.35 + Math.abs(anim.browLift) * 0.25})`;
-  ctx.lineWidth = Math.max(2, w * 0.008);
+  // Cheeks (romance / speak)
+  if (anim.cheek > 0.1) {
+    const a = 0.12 + anim.cheek * 0.2;
+    ctx.fillStyle = `rgba(255, 100, 110, ${a})`;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(
+        cx + side * w * 0.14,
+        faceTop + faceH * 0.52,
+        w * 0.06,
+        h * 0.035,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  }
+
+  // Brows — thick enough to see on photos
+  ctx.strokeStyle = `rgba(25,15,10,${0.55 + Math.abs(anim.browLift) * 0.3})`;
+  ctx.lineWidth = Math.max(2.5, w * 0.012);
   ctx.lineCap = "round";
-  const browY = y + h * 0.32 - anim.browLift * h * 0.02;
-  const browSpan = w * 0.12;
+  const browY = faceTop + faceH * 0.22 - anim.browLift * h * 0.025;
+  const browSpan = w * 0.1;
   for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.moveTo(cx + side * browSpan * 0.3, browY + (anim.browLift < 0 ? 4 : 0));
+    const angryDip = anim.browLift < 0 ? 7 : 0;
+    ctx.moveTo(cx + side * browSpan * 0.25, browY + angryDip * 0.3);
     ctx.quadraticCurveTo(
-      cx + side * browSpan * 0.7,
-      browY - 6 + (anim.browLift < 0 ? 8 : 0),
-      cx + side * browSpan * 1.15,
-      browY + 2,
+      cx + side * browSpan * 0.65,
+      browY - 7 + angryDip,
+      cx + side * browSpan * 1.2,
+      browY + 3,
     );
     ctx.stroke();
   }
 
-  if (anim.eyeSquint > 0.2) {
-    ctx.strokeStyle = `rgba(0,0,0,${0.2 + anim.eyeSquint * 0.25})`;
-    ctx.lineWidth = 1.5;
+  // Eyes / squint lines
+  if (anim.eyeSquint > 0.15) {
+    ctx.strokeStyle = `rgba(15,10,8,${0.35 + anim.eyeSquint * 0.35})`;
+    ctx.lineWidth = Math.max(1.5, w * 0.007);
     for (const side of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(cx + side * w * 0.08, y + h * 0.42);
-      ctx.lineTo(cx + side * w * 0.16, y + h * 0.43 + anim.eyeSquint * 2);
+      ctx.moveTo(cx + side * w * 0.06, faceTop + faceH * 0.38);
+      ctx.quadraticCurveTo(
+        cx + side * w * 0.11,
+        faceTop + faceH * 0.4 + anim.eyeSquint * 3,
+        cx + side * w * 0.16,
+        faceTop + faceH * 0.39,
+      );
       ctx.stroke();
     }
   }
 
+  // Mouth — high contrast so lips "move" on still photos
   const v = anim.viseme;
-  if (v === "B" || (anim.lipOpen < 0.1 && !v)) {
-    ctx.strokeStyle = "rgba(120,50,60,0.9)";
-    ctx.lineWidth = Math.max(2, w * 0.008);
+  if (v === "B" || (anim.lipOpen < 0.12 && !v && !anim.expression.includes("speak"))) {
+    ctx.strokeStyle = "rgba(90,30,40,0.95)";
+    ctx.lineWidth = Math.max(2.5, w * 0.01);
     ctx.beginPath();
     ctx.moveTo(cx - mouthW, mouthY);
-    ctx.quadraticCurveTo(cx, mouthY + 2, cx + mouthW, mouthY);
+    ctx.quadraticCurveTo(cx, mouthY + (anim.expression === "soft" ? 4 : 2), cx + mouthW, mouthY);
     ctx.stroke();
   } else if (v === "F") {
-    ctx.fillStyle = "rgba(40,10,15,0.5)";
-    ctx.fillRect(cx - mouthW, mouthY - 2, mouthW * 2, 4);
-    ctx.strokeStyle = "rgba(120,50,60,0.85)";
-    ctx.strokeRect(cx - mouthW, mouthY - 2, mouthW * 2, 4);
+    ctx.fillStyle = "rgba(30,8,12,0.65)";
+    ctx.fillRect(cx - mouthW, mouthY - 3, mouthW * 2, 6);
+    ctx.strokeStyle = "rgba(120,50,60,0.9)";
+    ctx.strokeRect(cx - mouthW, mouthY - 3, mouthW * 2, 6);
   } else {
-    ctx.fillStyle = "rgba(40,10,15,0.78)";
+    // Outer lip
+    ctx.fillStyle = "rgba(90,25,35,0.55)";
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW, Math.max(1.5, mouthH), 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, mouthY, mouthW * 1.08, Math.max(2, mouthH * 1.15), 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(120,50,60,0.85)";
+    // Inner open mouth
+    ctx.fillStyle = "rgba(25,5,10,0.88)";
+    ctx.beginPath();
+    ctx.ellipse(cx, mouthY, mouthW, Math.max(2, mouthH), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(140,55,65,0.95)";
     ctx.lineWidth = Math.max(1.5, w * 0.006);
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW, Math.max(1.5, mouthH), 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, mouthY, mouthW, Math.max(2, mouthH), 0, 0, Math.PI * 2);
     ctx.stroke();
-    if (anim.lipOpen > 0.42) {
-      ctx.fillStyle = "rgba(240,240,245,0.55)";
+    if (anim.lipOpen > 0.38) {
+      ctx.fillStyle = "rgba(245,245,250,0.65)";
       ctx.fillRect(
-        cx - mouthW * 0.55,
-        mouthY - mouthH * 0.35,
-        mouthW * 1.1,
-        mouthH * 0.32,
+        cx - mouthW * 0.5,
+        mouthY - mouthH * 0.4,
+        mouthW,
+        mouthH * 0.35,
       );
     }
   }
