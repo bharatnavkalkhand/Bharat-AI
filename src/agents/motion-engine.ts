@@ -1,69 +1,81 @@
-/** Phase 4: stylized motion without GPU — Ken Burns + mood dynamics */
+/** Stylized motion without GPU — Ken Burns + mood dynamics (visible movement) */
 
 export type MotionIntensity = "low" | "medium" | "high";
 
 export interface MotionState {
-  /** scale multiplier */
   zoom: number;
-  /** horizontal pan px */
   panX: number;
-  /** vertical pan px */
   panY: number;
-  /** rotation degrees (small) */
   rot: number;
+  /** vertical bob for character presence */
+  bobY: number;
+  /** horizontal sway */
+  swayX: number;
 }
 
 const INTENSITY = {
-  low: 0.6,
-  medium: 1,
-  high: 1.45,
+  low: 0.75,
+  medium: 1.15,
+  high: 1.7,
 } as const;
 
 /**
- * Compute motion for a frame at time t (seconds) for a given mood.
+ * Motion at time t — always some movement so frames never feel static.
  */
 export function motionAt(
   mood: string,
   t: number,
-  intensity: MotionIntensity = "medium",
+  intensity: MotionIntensity = "high",
 ): MotionState {
-  const k = INTENSITY[intensity] ?? 1;
+  const k = INTENSITY[intensity] ?? 1.15;
   const m = (mood || "dialogue").toLowerCase();
+
+  // Base life — never zero
+  const breath = 0.015 * k * Math.sin(t * 2.2);
+  const sway = 4 * k * Math.sin(t * 1.1);
+  const bob = 3 * k * Math.sin(t * 2.8);
 
   if (m === "fight" || m === "action") {
     return {
-      zoom: 1 + 0.08 * k + 0.04 * k * Math.sin(t * 9),
-      panX: 10 * k * Math.sin(t * 7),
-      panY: 6 * k * Math.cos(t * 5.5),
-      rot: 0.6 * k * Math.sin(t * 11),
+      zoom: 1 + 0.12 * k + 0.06 * k * Math.sin(t * 10) + breath,
+      panX: 18 * k * Math.sin(t * 8) + sway,
+      panY: 10 * k * Math.cos(t * 6) + bob,
+      rot: 1.2 * k * Math.sin(t * 12),
+      bobY: 6 * k * Math.sin(t * 9),
+      swayX: 8 * k * Math.sin(t * 7),
     };
   }
   if (m === "romance" || m === "emotional") {
     return {
-      zoom: 1 + 0.03 * k * t * 0.15 + 0.02 * k * Math.sin(t * 0.8),
-      panX: 8 * k * Math.sin(t * 0.35),
-      panY: -4 * k * Math.sin(t * 0.25),
-      rot: 0,
+      zoom: 1 + 0.05 * k + 0.03 * k * Math.sin(t * 0.9) + breath,
+      panX: 12 * k * Math.sin(t * 0.45) + sway * 0.5,
+      panY: -6 * k * Math.sin(t * 0.35) + bob * 0.6,
+      rot: 0.25 * k * Math.sin(t * 0.7),
+      bobY: 2.5 * k * Math.sin(t * 1.6),
+      swayX: 3 * k * Math.sin(t * 1.2),
     };
   }
   if (m === "gesture" || m === "dramatic") {
     return {
-      zoom: 1 + 0.06 * k * Math.min(1, t / 3),
-      panX: 6 * k * Math.sin(t * 1.2),
-      panY: 3 * k * Math.cos(t * 0.9),
-      rot: 0.2 * k * Math.sin(t * 2),
+      zoom: 1 + 0.08 * k * Math.min(1.2, t / 2.5) + breath,
+      panX: 10 * k * Math.sin(t * 1.4) + sway,
+      panY: 5 * k * Math.cos(t * 1.1) + bob,
+      rot: 0.45 * k * Math.sin(t * 2.2),
+      bobY: 4 * k * Math.sin(t * 2.4),
+      swayX: 5 * k * Math.sin(t * 1.8),
     };
   }
-  // dialogue / default — slow push-in
+  // dialogue / default — slow push + living sway
   return {
-    zoom: 1 + 0.045 * k * Math.min(1, t / 4),
-    panX: 3 * k * Math.sin(t * 0.5),
-    panY: 2 * k * Math.cos(t * 0.4),
-    rot: 0,
+    zoom: 1 + 0.06 * k * Math.min(1.1, t / 3.5) + breath,
+    panX: 7 * k * Math.sin(t * 0.65) + sway * 0.7,
+    panY: 4 * k * Math.cos(t * 0.55) + bob * 0.7,
+    rot: 0.15 * k * Math.sin(t * 1.1),
+    bobY: 2.2 * k * Math.sin(t * 2.1),
+    swayX: 3.5 * k * Math.sin(t * 1.3),
   };
 }
 
-/** Optional remote motion/video worker contract (ComfyUI-style) */
 export interface MotionWorkerJob {
   jobId: string;
   status: "queued" | "running" | "succeeded" | "failed";
