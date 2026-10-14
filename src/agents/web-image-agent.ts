@@ -1,7 +1,6 @@
 /**
- * Web Image Agent — multi-source free search
+ * Web Image Agent — multi-source free search + cinematic queries (B)
  * Sources: Wikimedia, Openverse, Met Museum, Art Institute of Chicago
- * Returns 12+ candidates per scene.
  */
 
 import {
@@ -9,6 +8,7 @@ import {
   type DirectorSceneInput,
   type ScreenLayout,
 } from "./director-agent";
+import { buildCinematicQueries } from "./cinematic-prompts";
 
 export type ImageSourceId =
   | "wikimedia"
@@ -85,7 +85,9 @@ function situationQueries(sc: DirectorSceneInput, movieTitle: string): string[] 
   if (/temple|mandir|मंदिर/.test(bits)) out.push("Hindu temple");
   if (/fight|लड़ाई|sword|war/.test(bits)) out.push("battle painting");
   if (/love|romance|प्यार/.test(bits)) out.push("romantic garden");
-  return out.slice(0, 2);
+  if (/राम|rama|elephant|हाथी|सीता/.test(bits))
+    out.push("Ramayana forest illustration", "Lord Rama mythology art");
+  return out.slice(0, 3);
 }
 
 export function buildEmotionSituationQueries(
@@ -93,17 +95,27 @@ export function buildEmotionSituationQueries(
   movieTitle: string,
   language: "en" | "hi",
 ): string[] {
+  const cinematic = buildCinematicQueries({
+    title: movieTitle,
+    sceneTitle: sc.title,
+    mood: sc.mood,
+    dialogue: sc.dialogue,
+    narration: sc.narration,
+    visualPrompt: sc.visualPrompt,
+    gestureNotes: sc.gestureNotes,
+    language,
+  });
   const ranked = [
+    ...cinematic,
     ...situationQueries(sc, movieTitle),
-    ...([sc.visualPrompt, sc.title].filter(Boolean) as string[]),
     ...emotionQueries(sc.mood, language),
   ];
   const uniq: string[] = [];
   for (const q of ranked) {
-    const t = q.trim().slice(0, 90);
+    const t = q.trim().slice(0, 100);
     if (t && !uniq.includes(t)) uniq.push(t);
   }
-  return uniq.slice(0, 5);
+  return uniq.slice(0, 6);
 }
 
 async function searchOpenverse(
@@ -254,8 +266,8 @@ export async function runWebImageAgent(opts: {
     const sc = sorted[i];
     opts.onProgress?.(
       language === "hi"
-        ? `मल्टी-सोर्स: सीन ${i + 1}/${sorted.length}…`
-        : `Multi-source: scene ${i + 1}/${sorted.length}…`,
+        ? `Cinematic search: सीन ${i + 1}/${sorted.length}…`
+        : `Cinematic search: scene ${i + 1}/${sorted.length}…`,
     );
 
     const queries = buildEmotionSituationQueries(sc, title, language);
@@ -310,7 +322,7 @@ export async function runWebImageAgent(opts: {
     filledCount,
     summary:
       language === "hi"
-        ? `${filledCount}/${sorted.length} सीन · ~${Math.round(avg)} विकल्प (Commons+Openverse+Met+ArtIC).`
-        : `Filled ${filledCount}/${sorted.length} · ~${Math.round(avg)} options (Commons+Openverse+Met+ArtIC).`,
+        ? `${filledCount}/${sorted.length} सीन · cinematic queries · ~${Math.round(avg)} विकल्प`
+        : `Filled ${filledCount}/${sorted.length} · cinematic queries · ~${Math.round(avg)} options`,
   };
 }
