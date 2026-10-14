@@ -36,6 +36,7 @@ import {
   formatUpgradeReport,
 } from "@/agents/upgrade-agent";
 import { DirectorControls } from "@/components/DirectorControls";
+import { runWebImageAgent } from "@/agents/web-image-agent";
 import { cn } from "@/lib/utils";
 
 function StagePill({ status }: { status: AgentStageStatus }) {
@@ -84,7 +85,7 @@ export function ProducePage() {
   const [doVoice, setDoVoice] = useState(false);
   const [doVideo, setDoVideo] = useState(true);
   const [headline, setHeadline] = useState("");
-  const [motionIntensity, setMotionIntensity] = useState<MotionIntensity>("medium");
+  const [motionIntensity, setMotionIntensity] = useState<MotionIntensity>("high");
   const [facePerformance, setFacePerformance] = useState(true);
   const [dualScreen, setDualScreen] = useState(true);
   const [use3dAvatar, setUse3dAvatar] = useState(false);
@@ -149,6 +150,48 @@ export function ProducePage() {
     setPipeline(result.pipeline);
     if (result.script) {
       applyScriptResult(movieId, result.script, { replaceCast: true, replaceScenes: true });
+      try {
+        setRecordStatus(
+          movie.language === "hi"
+            ? "सीन के हिसाब से तस्वीरें जोड़ी जा रही हैं…"
+            : "Adding scene pictures automatically…",
+        );
+        const fills = await runWebImageAgent({
+          title: result.script.title || movie.title,
+          language: movie.language,
+          layout: dualScreen ? "dual" : "single",
+          scenes: result.script.scenes.map((sc, order) => ({
+            id: `tmp-${order}`,
+            order,
+            title: sc.title,
+            mood: sc.mood,
+            dialogue: sc.dialogue,
+            narration: sc.narration,
+            visualPrompt: sc.visualPrompt,
+            gestureNotes: sc.gestureNotes,
+          })),
+          onProgress: (msg) => setRecordStatus(msg),
+        });
+        const updated = useMovieStore.getState().movies.find((m) => m.id === movieId);
+        const sorted = (updated?.scenes || []).slice().sort((a, b) => a.order - b.order);
+        fills.fills.forEach((f, i) => {
+          const sc = sorted[i];
+          if (!sc) return;
+          const patch: { imageTopLocal?: string; imageBottomLocal?: string } = {};
+          if (f.imageTop) patch.imageTopLocal = f.imageTop;
+          if (f.imageBottom) patch.imageBottomLocal = f.imageBottom;
+          if (patch.imageTopLocal || patch.imageBottomLocal) {
+            updateScene(movieId, sc.id, patch);
+          }
+        });
+        setRecordStatus(fills.summary);
+      } catch {
+        setRecordStatus(
+          movie.language === "hi"
+            ? "ऑटो-इमेज आंशिक — Auto-fill आज़माएँ"
+            : "Auto-images partial — try Auto-fill",
+        );
+      }
       if (!headline) {
         setHeadline(result.script.logline?.slice(0, 80) || (movie.language === "hi" ? `${movie.title} — कहानी` : `${movie.title} — the story`));
       }
@@ -260,8 +303,8 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          <strong className="text-fg">3D + lip-sync + 12+ images:</strong> enable 3D
-          talking-head for visible jaw/lip morphs. Auto-fill pulls 12+ options from 4 free sources.
+          <strong className="text-fg">Auto pictures + motion:</strong> Script ke
+          baad scenes par web images auto-lagti hain. Play par zoom/pan/bob — static nahi.
         </p>
       </div>
 
@@ -335,7 +378,7 @@ export function ProducePage() {
       )}
 
       <section className="mb-4 rounded-xl border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-medium">Motion intensity</p>
+        <p className="mb-2 text-xs font-medium">Motion intensity (character movement)</p>
         <div className="flex gap-2">
           {(["low", "medium", "high"] as MotionIntensity[]).map((level) => (
             <button key={level} type="button" onClick={() => setMotionIntensity(level)}
@@ -382,20 +425,10 @@ export function ProducePage() {
         }}
       />
 
-      <section className="mb-4 rounded-xl border border-border bg-card p-3">
-        <button type="button" className="w-full rounded-lg border border-border py-2 text-xs font-medium text-accent"
-          onClick={() => setUpgradeText(formatUpgradeReport(runUpgradeAgent()))}>
-          Run Upgrade Agent (public gaps)
-        </button>
-        {upgradeText && (
-          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-bg p-2 text-[10px] text-muted">{upgradeText}</pre>
-        )}
-      </section>
-
       <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-3 py-2">
           <p className="text-xs font-medium text-muted">
-            Cinematic · {use3dAvatar ? "3D avatar" : dualScreen ? "dual" : "single"} · lip-sync
+            Cinematic · motion {motionIntensity} · {use3dAvatar ? "3D/human" : dualScreen ? "dual" : "single"}
           </p>
           <input value={headline} onChange={(e) => setHeadline(e.target.value)}
             placeholder={movie.language === "hi" ? "शीर्षक कैप्शन" : "Headline caption"}
@@ -435,14 +468,6 @@ export function ProducePage() {
           Active frame: {frame.title} · {frame.mood}
         </div>
       )}
-
-      <section className="mb-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-1 text-sm font-medium">Photoreal worker (optional)</h2>
-        <p className="mb-2 text-xs text-muted">3D canvas avatar is free; MuseTalk/Wav2Lip needs GPU URL</p>
-        <input value={workerUrl} onChange={(e) => setWorkerUrl(e.target.value)}
-          placeholder="https://your-free-gpu-worker.example.com"
-          className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent" />
-      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted">Agents</h2>
