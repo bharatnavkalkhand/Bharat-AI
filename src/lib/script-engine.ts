@@ -29,43 +29,33 @@ export interface ScriptOutput {
   note: string;
 }
 
-function pickNames(language: Language, genres: string[]) {
-  const hi = language === "hi";
-  const hasFight = genres.includes("action") || genres.some((g) => /fight|action/i.test(g));
-  const hasRomance = genres.includes("romance") || genres.some((g) => /romance|love/i.test(g));
-
-  if (hi) {
-    return {
-      hero: hasFight ? "अरजुन" : "आदित्य",
-      love: hasRomance ? "मीरा" : "अन्या",
-      rival: "विक्रम",
-      mentor: "गुरुदेव",
-    };
+/** Remove title loops like "ram katha: ram katha: ram katha: …" */
+function cleanIdea(raw: string, title: string): string {
+  let s = (raw || "").trim();
+  if (!s) return "";
+  // Collapse repeated "word:" prefixes
+  s = s.replace(/(\S{2,40}:\s*)\1+/gi, "$1");
+  // Strip repeated title
+  const t = title.trim();
+  if (t.length >= 3) {
+    const re = new RegExp(
+      `(${escapeReg(t)}\s*[:\-–—]?\s*)+`,
+      "gi",
+    );
+    s = s.replace(re, "").trim();
   }
-  return {
-    hero: hasFight ? "Arjun" : "Aditya",
-    love: hasRomance ? "Meera" : "Anya",
-    rival: "Vikram",
-    mentor: "Gurudev",
-  };
+  // Collapse any short token repeated 3+ times at start
+  s = s.replace(/^((\S{2,30})\s*[:\-]?\s*){3,}/u, "").trim();
+  s = s.replace(/\s{2,}/g, " ").trim();
+  return s || raw.trim();
 }
 
-function extractKeywords(idea: string): string[] {
-  const stop = new Set(
-    "the a an and or but in on at to for of with from by is are was were be been being this that these those i you he she it we they a an".split(
-      " ",
-    ),
-  );
-  return idea
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 3 && !stop.has(w))
-    .slice(0, 12);
+function escapeReg(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function sceneCount(duration: MovieDuration): number {
-  return duration === "10min" ? 10 : 6;
+  return duration === "10min" ? 8 : 5;
 }
 
 function secPerScene(duration: MovieDuration, count: number): number {
@@ -73,10 +63,233 @@ function secPerScene(duration: MovieDuration, count: number): number {
   return Math.round(total / count);
 }
 
+function isRamayanaStory(text: string): boolean {
+  return /राम|सीता|लक्ष्मण|रघुनंदन|हनुमान|रावण|गज|हाथी|हाथिनी|शाप|वनवास|ayodhya|rama|sita|elephant|curse/i.test(
+    text,
+  );
+}
+
+/** Split long prose into ordered story beats for scenes */
+function splitBeats(idea: string, max: number): string[] {
+  const cleaned = idea.replace(/\n+/g, " ").trim();
+  if (!cleaned) return [];
+  // Prefer sentence boundaries (Hindi danda / Latin)
+  let parts = cleaned
+    .split(/(?<=[।.!?]\s*)/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 12);
+  if (parts.length < 2) {
+    // Split on commas / then for long single block
+    parts = cleaned
+      .split(/[,;]\s+|\s+तब\s+|\s+फिर\s+|\s+और\s+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 15);
+  }
+  if (parts.length === 0) parts = [cleaned];
+  // Merge tiny fragments
+  const merged: string[] = [];
+  for (const p of parts) {
+    if (merged.length && merged[merged.length - 1].length < 40) {
+      merged[merged.length - 1] += " " + p;
+    } else {
+      merged.push(p);
+    }
+  }
+  // Cap / expand to max
+  if (merged.length > max) {
+    const out: string[] = [];
+    const chunk = Math.ceil(merged.length / max);
+    for (let i = 0; i < merged.length; i += chunk) {
+      out.push(merged.slice(i, i + chunk).join(" "));
+    }
+    return out.slice(0, max);
+  }
+  return merged.slice(0, max);
+}
+
+function moodForBeat(beat: string, index: number, total: number): SceneMood {
+  const b = beat.toLowerCase();
+  if (/शाप|क्रोध|क्षुब्ध|लड़ाई|युद्ध|मार|fight|curse|angry/.test(b))
+    return index === 0 ? "dramatic" : "fight";
+  if (/प्रेम|माफी|प्रार्थना|दया|रोमांस|love|forgive|soft/.test(b))
+    return "romance";
+  if (/दुख|दीन|रोना|emotional|sad/.test(b)) return "emotional";
+  if (/क्रिया|क्रीड़ा|खेल|gesture|play/.test(b)) return "gesture";
+  if (index === 0) return "dialogue";
+  if (index === total - 1) return "emotional";
+  if (index % 3 === 1) return "action";
+  return "dialogue";
+}
+
+function titleForBeat(beat: string, index: number, hi: boolean): string {
+  const b = beat;
+  if (/शाप/.test(b)) return hi ? `दृश्य ${index + 1} — शाप` : `Scene ${index + 1} — Curse`;
+  if (/प्रार्थना|दीन/.test(b))
+    return hi ? `दृश्य ${index + 1} — प्रार्थना` : `Scene ${index + 1} — Prayer`;
+  if (/निवृत्ति|संतुष्ट|सुख/.test(b))
+    return hi ? `दृश्य ${index + 1} — शाप-निवृत्ति` : `Scene ${index + 1} — Relief`;
+  if (/सीता|पता/.test(b))
+    return hi ? `दृश्य ${index + 1} — सीता की खोज` : `Scene ${index + 1} — Search for Sita`;
+  if (/गजोपसेचन|जल|अचेत/.test(b))
+    return hi ? `दृश्य ${index + 1} — गजोपसेचन` : `Scene ${index + 1} — Gajopasechan`;
+  if (index === 0) return hi ? "दृश्य 1 — आरंभ" : "Scene 1 — Beginning";
+  if (index === 0) return hi ? "आरंभ" : "Opening";
+  return hi ? `दृश्य ${index + 1}` : `Scene ${index + 1}`;
+}
+
+function dialogueFromBeat(
+  beat: string,
+  chars: GeneratedCharacter[],
+  hi: boolean,
+  mood: SceneMood,
+): string {
+  const a = chars[0]?.name || (hi ? "कथावाचक" : "Narrator");
+  const b = chars[1]?.name || chars[0]?.name || a;
+  const c = chars[2]?.name;
+
+  // Mythic dialogue shaped from the beat text
+  if (/राम|श्री राम|रघुनंदन/.test(beat) && /हाथी/.test(beat)) {
+    if (/शाप/.test(beat) && !/निवृत्ति/.test(beat)) {
+      return hi
+        ? `श्री राम: हे गज! सीता माता का समाचार दो।\nहाथी: (मौन — हाथिनी के संग क्रीड़ा)\nश्री राम: हाथिनी के संग रमण करोगे तो प्राण चले जाएंगे!`
+        : `Shri Ram: O elephant, tell me of Sita.\nElephant: (silent, plays with mate)\nShri Ram: Sport with her and your life shall leave you!`;
+    }
+    if (/प्रार्थना|दीन/.test(beat)) {
+      return hi
+        ? `हाथी: प्रभु, क्षमा करें!\nहाथिनी: हे रघुनंदन, दया कीजिए।\nश्री राम: …`
+        : `Elephant: Lord, forgive us!\nMate: O Raghunandan, show mercy.\nShri Ram: …`;
+    }
+    if (/निवृत्ति|गजोपसेचन|जल/.test(beat)) {
+      return hi
+        ? `श्री राम: रमण के समय अचेत गिरोगे; हाथिनी जल छिड़के तो प्राण बचेंगे। सात दिन पश्चात वन में विहार। यही गजोपसेचन।\nहाथी: प्रभु की जय हो!`
+        : `Shri Ram: When you unite you shall fall senseless; she shall sprinkle water and save you. After seven days roam the forest. This is Gajopasechan.\nElephant: Glory to the Lord!`;
+    }
+    return hi
+      ? `श्री राम: ${beat.slice(0, 90)}\n${b}: …`
+      : `Shri Ram: ${beat.slice(0, 100)}\n${b}: …`;
+  }
+
+  // Generic: first line paraphrase beat, second reacts
+  const short = beat.length > 100 ? beat.slice(0, 97) + "…" : beat;
+  if (mood === "fight" || mood === "action") {
+    return hi
+      ? `${a}: ${short}\n${c || b}: अब क्या होगा?`
+      : `${a}: ${short}\n${c || b}: What now?`;
+  }
+  if (mood === "romance" || mood === "emotional") {
+    return hi
+      ? `${a}: ${short}\n${b}: हृदय सुन रहा है।`
+      : `${a}: ${short}\n${b}: The heart hears.`;
+  }
+  return hi
+    ? `${a}: ${short}\n${b}: आगे क्या?`
+    : `${a}: ${short}\n${b}: What follows?`;
+}
+
+function charactersForStory(
+  idea: string,
+  language: Language,
+  genres: string[],
+): GeneratedCharacter[] {
+  const hi = language === "hi";
+  if (isRamayanaStory(idea)) {
+    return [
+      {
+        name: hi ? "श्री राम" : "Shri Ram",
+        role: hi ? "भगवान / नायक" : "Lord / Protagonist",
+        appearance: hi
+          ? "धनुष-बाण, पीतांबर, शांत किंतु गंभीर मुख"
+          : "Bow and arrow, yellow robe, calm but stern face",
+        personality: hi ? "धर्मनिष्ठ, करुणामय" : "Righteous, compassionate",
+      },
+      {
+        name: hi ? "हाथी" : "Elephant",
+        role: hi ? "गज" : "Elephant",
+        appearance: hi
+          ? "विशाल गज, वन में क्रीड़ारत"
+          : "Great elephant, playful in the forest",
+        personality: hi ? "मोहित, फिर विनीत" : "Entranced, then humble",
+      },
+      {
+        name: hi ? "हाथिनी" : "Elephant-mate",
+        role: hi ? "संगिनी" : "Mate",
+        appearance: hi ? "हाथिनी, स्नेहपूर्ण" : "She-elephant, affectionate",
+        personality: hi ? "भक्त, रक्षक" : "Devoted, protective",
+      },
+    ];
+  }
+
+  const hasFight =
+    genres.includes("action") ||
+    /fight|battle|sword|war|लड़ाई|युद्ध/i.test(idea);
+  const hasRomance =
+    genres.includes("romance") ||
+    /love|romance|प्रेम|प्यार/i.test(idea);
+
+  // Try extract proper names (2+ Devanagari or Capitalized words)
+  const nameHits =
+    idea.match(/[A-Z][a-z]{2,}|(?:[\u0900-\u097F]{2,})/g)?.filter(
+      (n) =>
+        !/^(यह|वह|और|फिर|तब|एक|की|के|को|से|पर|में|है|था|the|and|for|with)$/i.test(
+          n,
+        ),
+    ) || [];
+  const uniq: string[] = [];
+  for (const n of nameHits) {
+    if (!uniq.includes(n) && n.length >= 2) uniq.push(n);
+    if (uniq.length >= 3) break;
+  }
+
+  if (uniq.length >= 2) {
+    return uniq.slice(0, 3).map((name, i) => ({
+      name,
+      role:
+        i === 0
+          ? hi
+            ? "नायक"
+            : "Protagonist"
+          : i === 1
+            ? hi
+              ? "सहपात्र"
+              : "Supporting"
+            : hi
+              ? "अन्य"
+              : "Other",
+      appearance: hi
+        ? "कहानी के अनुरूप वेश"
+        : "Costume matching the story",
+    }));
+  }
+
+  const hero = hi ? (hasFight ? "अरजुन" : "आदित्य") : hasFight ? "Arjun" : "Aditya";
+  const love = hi ? (hasRomance ? "मीरा" : "अन्या") : hasRomance ? "Meera" : "Anya";
+  const list: GeneratedCharacter[] = [
+    {
+      name: hero,
+      role: hi ? "नायक" : "Protagonist",
+      appearance: hi
+        ? "दृढ़ नज़र, साधारण कपड़े"
+        : "Determined eyes, simple clothes",
+    },
+    {
+      name: love,
+      role: hi ? (hasRomance ? "प्रेमिका" : "सहयोगी") : hasRomance ? "Love interest" : "Ally",
+      appearance: hi ? "कोमल मुस्कान" : "Soft smile",
+    },
+  ];
+  if (hasFight) {
+    list.push({
+      name: hi ? "विक्रम" : "Vikram",
+      role: hi ? "प्रतिद्वंद्वी" : "Rival",
+      appearance: hi ? "तीखी नज़र, काले कपड़े" : "Sharp gaze, dark clothes",
+    });
+  }
+  return list;
+}
+
 /**
- * Zero-cost script engine: runs entirely in the browser.
- * Produces structured characters, scenes, dialogue, and a printable full script.
- * Not a cloud LLM — honest template + story-structure generation from the user's idea.
+ * Zero-cost script engine — browser only.
+ * MUST follow the user's story text; no forced modern romance template.
  */
 export function generateScript(input: {
   title: string;
@@ -85,201 +298,65 @@ export function generateScript(input: {
   targetDuration: MovieDuration;
   genres: string[];
 }): ScriptOutput {
-  const language = input.language ?? "en";
-  const genres = input.genres?.length ? input.genres : ["action", "romance"];
-  const idea = (input.idea || input.title || "A story of courage and heart").trim();
-  const title = (input.title || "Untitled Movie").trim();
+  const language = input.language ?? "hi";
+  const genres = input.genres?.length ? input.genres : ["drama"];
+  const title = (input.title || (language === "hi" ? "कथा" : "Story")).trim();
+  const idea = cleanIdea(input.idea || input.title || "", title);
   const hi = language === "hi";
-  const names = pickNames(language, genres);
-  const keywords = extractKeywords(idea);
-  const setting =
-    keywords.find((k) =>
-      /rain|temple|city|village|street|school|market|mountain|river|night|festival|train|stadium|palace|forest/.test(
-        k,
-      ),
-    ) || (hi ? "शहर" : "the city");
-
-  const hasFight =
-    genres.includes("action") ||
-    /fight|battle|sword|war|ladai|yudh|clash/i.test(idea);
-  const hasRomance =
-    genres.includes("romance") ||
-    /love|romance|heart|pyaar|prem|kiss|embrace/i.test(idea);
-
-  const characters: GeneratedCharacter[] = [
-    {
-      name: names.hero,
-      role: hi ? "नायक" : "Protagonist",
-      appearance: hi
-        ? "दृढ़ नज़र, साधारण लेकिन मजबूत कपड़े, भावपूर्ण चेहरा"
-        : "Determined eyes, simple but strong clothes, expressive face",
-      personality: hi ? "बहादुर, वफादार" : "Brave, loyal",
-    },
-    {
-      name: names.love,
-      role: hi ? (hasRomance ? "प्रेमिका" : "सहयोगी") : hasRomance ? "Love interest" : "Ally",
-      appearance: hi
-        ? "कोमल मुस्कान, साफ पहनावा, भावुक आँखें"
-        : "Soft smile, clean attire, expressive eyes",
-      personality: hi ? "मजबूत दिल, दयालु" : "Strong-hearted, kind",
-    },
-  ];
-
-  if (hasFight) {
-    characters.push({
-      name: names.rival,
-      role: hi ? "प्रतिद्वंद्वी" : "Rival",
-      appearance: hi
-        ? "तीखी नज़र, काले कपड़े, आक्रामक हावभाव"
-        : "Sharp gaze, dark clothes, aggressive posture",
-      personality: hi ? "अभिमानी, शक्तिशाली" : "Proud, powerful",
-    });
-  }
-
+  const characters = charactersForStory(idea, language, genres);
   const n = sceneCount(input.targetDuration);
   const sec = secPerScene(input.targetDuration, n);
-  const scenes: GeneratedScene[] = [];
+  const beats = splitBeats(idea, n);
 
-  // Opening
-  scenes.push({
-    title: hi ? "शुरुआत — परिचय" : "Opening — Introduction",
-    mood: "dialogue",
-    dialogue: hi
-      ? `${names.hero}: यह जगह मुझे हमेशा कुछ याद दिलाती है...\n${names.love}: यादें कभी नहीं मरतीं, ${names.hero}.`
-      : `${names.hero}: This place always reminds me of something unfinished.\n${names.love}: Memories don't die, ${names.hero}. They wait.`,
-    gestureNotes: hi
-      ? "धीरे चलना, एक-दूसरे की ओर देखना"
-      : "Slow walk, glancing at each other",
-    visualPrompt: `Cinematic establishing shot of ${setting}, ${names.hero} and ${names.love}, ${moodToPromptHint("dialogue")}`,
-    narration: hi
-      ? `कहानी शुरू होती है जहाँ ${idea.slice(0, 80)}`
-      : `Our story begins where ${idea.slice(0, 100)}`,
-    estimatedDurationSec: sec,
-  });
-
-  // Inciting
-  scenes.push({
-    title: hi ? "मोड़ — चुनौती" : "Turning point — Challenge",
-    mood: hasFight ? "action" : "dramatic",
-    dialogue: hi
-      ? `${names.hero}: मुझे रुकना नहीं चाहिए।\n${names.love}: तो फिर मैं भी साथ हूँ।`
-      : `${names.hero}: I can't stay still anymore.\n${names.love}: Then I'm coming with you.`,
-    gestureNotes: hi ? "मुट्ठी बंद, दृढ़ कदम" : "Clenched fist, firm steps",
-    visualPrompt: `${names.hero} faces a decision in ${setting}, ${moodToPromptHint(hasFight ? "action" : "dramatic")}`,
-    estimatedDurationSec: sec,
-  });
-
-  if (hasFight) {
-    scenes.push({
-      title: hi ? "लड़ाई — पहला मुकाबला" : "Fight — First clash",
-      mood: "fight",
-      dialogue: hi
-        ? `${names.rival}: तुम तैयार नहीं हो!\n${names.hero}: आज देख लेंगे।`
-        : `${names.rival}: You're not ready!\n${names.hero}: Watch me.`,
-      gestureNotes: hi
-        ? "तलवार/मुक्का, बचाव, किक, नाटकीय दूरी"
-        : "Sword or fist clash, dodge, kick, dramatic distance",
-      visualPrompt: `Intense fight between ${names.hero} and ${names.rival}, ${moodToPromptHint("fight")}, ${setting}`,
-      estimatedDurationSec: Math.round(sec * 1.2),
-    });
+  // Ensure we have enough beats
+  while (beats.length < n) {
+    beats.push(
+      hi
+        ? `${idea.slice(0, 60)} — आगे का प्रसंग (${beats.length + 1})`
+        : `${idea.slice(0, 60)} — continuation (${beats.length + 1})`,
+    );
   }
 
-  if (hasRomance) {
-    scenes.push({
-      title: hi ? "प्रेम — कोमल क्षण" : "Romance — Soft moment",
-      mood: "romance",
-      dialogue: hi
-        ? `${names.love}: डर लगता है कभी-कभी।\n${names.hero}: मैं हूँ ना।`
-        : `${names.love}: Sometimes I'm afraid.\n${names.hero}: I'm right here.`,
+  const scenes: GeneratedScene[] = beats.slice(0, n).map((beat, i) => {
+    const mood = moodForBeat(beat, i, n);
+    const narration =
+      i === 0 || beat.length > 80
+        ? beat.length > 140
+          ? beat.slice(0, 137) + "…"
+          : beat
+        : undefined;
+    return {
+      title: titleForBeat(beat, i, hi),
+      mood,
+      dialogue: dialogueFromBeat(beat, characters, hi, mood),
       gestureNotes: hi
-        ? "हाथ पकड़ना, कोमल मुस्कान, नज़दीकी"
-        : "Hand hold, soft smile, close proximity",
-      visualPrompt: `Tender moment between ${names.hero} and ${names.love}, ${moodToPromptHint("romance")}`,
+        ? mood === "fight"
+          ? "क्रोध, हाथ उठाना, गंभीर खड़े होना"
+          : mood === "romance" || mood === "emotional"
+            ? "प्रणाम, दीन मुद्रा, आशीष"
+            : "वन में चलना, एक-दूसरे की ओर देखना"
+        : mood === "fight"
+          ? "Anger, raised hand, stern stance"
+          : "Walk in forest, look toward each other",
+      visualPrompt: isRamayanaStory(idea)
+        ? `Epic Ramayana forest, ${characters.map((c) => c.name).join(", ")}, ${moodToPromptHint(mood)}, ${beat.slice(0, 50)}`
+        : `${moodToPromptHint(mood)}, ${beat.slice(0, 60)}`,
+      narration,
       estimatedDurationSec: sec,
-    });
-  }
-
-  // Mid conflict
-  scenes.push({
-    title: hi ? "संघर्ष — अंदरूनी" : "Conflict — Inner storm",
-    mood: "emotional",
-    dialogue: hi
-      ? `${names.hero}: क्या मैं सही रास्ते पर हूँ?\n${names.love}: सही रास्ता आसान नहीं होता।`
-      : `${names.hero}: Am I on the right path?\n${names.love}: The right path is rarely easy.`,
-    gestureNotes: hi ? "सिर झुकाना, कंधे पर हाथ" : "Head down, hand on shoulder",
-    visualPrompt: `${names.hero} emotional close-up, ${moodToPromptHint("emotional")}`,
-    estimatedDurationSec: sec,
+    };
   });
 
-  if (hasFight && n >= 7) {
-    scenes.push({
-      title: hi ? "लड़ाई — चरम" : "Fight — Climax battle",
-      mood: "fight",
-      dialogue: hi
-        ? `${names.rival}: अब खत्म!\n${names.hero}: अभी तो शुरू हुआ है!`
-        : `${names.rival}: This ends now!\n${names.hero}: It has only begun!`,
-      gestureNotes: hi
-        ? "तेज़ वार, घूमना, अंतिम झटका, साँस फूलना"
-        : "Rapid strikes, spin, final blow, heavy breathing",
-      visualPrompt: `Climactic duel ${names.hero} vs ${names.rival}, ${moodToPromptHint("fight")}`,
-      estimatedDurationSec: Math.round(sec * 1.3),
-    });
-  }
-
-  if (hasRomance && n >= 8) {
-    scenes.push({
-      title: hi ? "इशारा — चुपचाप प्यार" : "Gesture — Quiet love",
-      mood: "gesture",
-      dialogue: hi
-        ? `${names.love}: कुछ कहने की ज़रूरत नहीं।\n${names.hero}: ...`
-        : `${names.love}: You don't have to say anything.\n${names.hero}: ...`,
-      gestureNotes: hi
-        ? "माथे पर हाथ, आँखों में आँखें, धीमी मुस्कान"
-        : "Hand to forehead, eye contact, slow smile",
-      visualPrompt: `Expressive gesture scene, ${names.hero} and ${names.love}, ${moodToPromptHint("gesture")}`,
-      estimatedDurationSec: sec,
-    });
-  }
-
-  // Fill remaining slots with story beats tied to idea
-  while (scenes.length < n - 1) {
-    const i = scenes.length;
-    scenes.push({
-      title: hi ? `दृश्य ${i + 1} — आगे बढ़ना` : `Scene ${i + 1} — Rising action`,
-      mood: i % 2 === 0 ? "action" : "dialogue",
-      dialogue: hi
-        ? `${names.hero}: हमें आगे बढ़ना होगा।\n${names.love}: साथ में।`
-        : `${names.hero}: We have to keep moving.\n${names.love}: Together.`,
-      gestureNotes: hi ? "चलते हुए बात" : "Walking and talking",
-      visualPrompt: `${setting}, ${names.hero}, ${moodToPromptHint(i % 2 === 0 ? "action" : "dialogue")}, based on: ${idea.slice(0, 60)}`,
-      estimatedDurationSec: sec,
-    });
-  }
-
-  // Resolution
-  scenes.push({
-    title: hi ? "अंत — नई सुबह" : "Resolution — New dawn",
-    mood: hasRomance ? "romance" : "emotional",
-    dialogue: hi
-      ? `${names.hero}: अब हम तैयार हैं।\n${names.love}: हाँ — साथ में।`
-      : `${names.hero}: We're ready now.\n${names.love}: Yes — together.`,
-    gestureNotes: hi
-      ? "कंधे से कंधा, आशा भरी नज़रें"
-      : "Side by side, hopeful looks",
-    visualPrompt: `Closing shot of ${names.hero} and ${names.love}, ${moodToPromptHint(hasRomance ? "romance" : "emotional")}, hopeful light`,
-    narration: hi
-      ? "कहानी यहीं खत्म नहीं होती — यह एक नई शुरुआत है।"
-      : "The story doesn't end here — it becomes a beginning.",
-    estimatedDurationSec: sec,
-  });
-
-  const logline = hi
-    ? `${names.hero} और ${names.love} की कहानी — ${idea.slice(0, 100)}`
-    : `${names.hero} and ${names.love} — ${idea.slice(0, 120)}`;
+  const logline = isRamayanaStory(idea)
+    ? hi
+      ? `श्री राम, हाथी और शाप की कथा — ${idea.slice(0, 80)}${idea.length > 80 ? "…" : ""}`
+      : `The tale of Shri Ram, the elephant, and a curse — ${idea.slice(0, 90)}`
+    : hi
+      ? `${characters[0]?.name || title}: ${idea.slice(0, 100)}${idea.length > 100 ? "…" : ""}`
+      : `${characters[0]?.name || title}: ${idea.slice(0, 110)}`;
 
   const synopsis = hi
-    ? `${title}: ${idea}\n\nइस फिल्म में ${characters.map((c) => c.name).join(", ")} हैं। अवधि लगभग ${input.targetDuration === "10min" ? "10" : "5"} मिनट। ${hasFight ? "लड़ाई के दृश्य शामिल हैं। " : ""}${hasRomance ? "प्रेम और इशारों के क्षण हैं।" : ""}`
-    : `${title}: ${idea}\n\nFeaturing ${characters.map((c) => c.name).join(", ")}. Target length ~${input.targetDuration === "10min" ? "10" : "5"} minutes. ${hasFight ? "Includes fight sequences. " : ""}${hasRomance ? "Includes romance and gesture moments." : ""}`;
+    ? `${title}\n\n${idea}\n\nपात्र: ${characters.map((c) => c.name).join(", ")}। अवधि ~${input.targetDuration === "10min" ? "10" : "5"} मिनट।`
+    : `${title}\n\n${idea}\n\nCast: ${characters.map((c) => c.name).join(", ")}. ~${input.targetDuration === "10min" ? "10" : "5"} min.`;
 
   const fullScriptText = buildFullScript({
     title,
@@ -294,12 +371,12 @@ export function generateScript(input: {
     logline,
     synopsis,
     characters,
-    scenes: scenes.slice(0, n),
+    scenes,
     fullScriptText,
     language,
     note: hi
-      ? "यह स्क्रिप्ट ब्राउज़र में मुफ़्त जेनरेट हुई है (कोई पेड API नहीं)। आप हर दृश्य संपादित कर सकते हैं।"
-      : "This script was generated free in your browser (no paid API). You can edit every scene.",
+      ? "स्क्रिप्ट आपकी दी हुई कहानी से बनी है (ब्राउज़र, ₹0)। दृश्य संपादित कर सकते हैं।"
+      : "Script built from your story text (browser, ₹0). You can edit every scene.",
   };
 }
 
@@ -323,7 +400,9 @@ function buildFullScript(opts: {
   lines.push(hi ? "=== स्क्रिप्ट ===" : "=== SCRIPT ===");
   opts.scenes.forEach((sc, i) => {
     lines.push("");
-    lines.push(`--- SCENE ${i + 1}: ${sc.title} [${sc.mood}] (~${sc.estimatedDurationSec}s) ---`);
+    lines.push(
+      `--- SCENE ${i + 1}: ${sc.title} [${sc.mood}] (~${sc.estimatedDurationSec}s) ---`,
+    );
     if (sc.narration) lines.push(`NARRATION: ${sc.narration}`);
     if (sc.gestureNotes) lines.push(`GESTURE: ${sc.gestureNotes}`);
     lines.push(sc.dialogue);
