@@ -276,9 +276,7 @@ export function ProducePage() {
     setPlayingCinema(true);
     setExporting(record);
     setCinemaCaption("");
-    setRecordStatus(
-      record ? "Recording…" : "Playing…",
-    );
+    setRecordStatus(record ? "Recording…" : "Playing…");
     setLastExport(null);
 
     const hl =
@@ -302,7 +300,7 @@ export function ProducePage() {
           motionIntensity,
           facePerformance,
           layout: dualScreen ? "dual" : "single",
-          onCaption: (t) => setCinemaCaption(t),
+          onCaption: (cap) => setCinemaCaption(cap),
           onScene: (i) => setFrameIndex(i),
           onRecordProgress: (msg) => setRecordStatus(msg),
         },
@@ -314,11 +312,7 @@ export function ProducePage() {
           movie.title.replace(/[^\w\u0900-\u097F]+/g, "_").slice(0, 40) ||
           "bharat_ai_movie";
         const name = `${safe}.${result.extension}`;
-        setLastExport({
-          blob: result.blob,
-          extension: result.extension,
-          name,
-        });
+        setLastExport({ blob: result.blob, extension: result.extension, name });
         setRecordStatus(`Ready: ${name}`);
         downloadBlob(result.blob, name);
       } else if (record) {
@@ -327,9 +321,7 @@ export function ProducePage() {
         setRecordStatus("Playback finished.");
       }
     } catch (e) {
-      setRecordStatus(
-        e instanceof Error ? e.message : "Playback/export failed",
-      );
+      setRecordStatus(e instanceof Error ? e.message : "Playback/export failed");
     } finally {
       setPlayingCinema(false);
       setExporting(false);
@@ -363,8 +355,8 @@ export function ProducePage() {
       <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          <strong className="text-fg">Mind + layout:</strong> Director Agent
-          plans images, motion & VO. Tick dual screen or single frame.
+          <strong className="text-fg">Web Image Agent:</strong> one tap pulls
+          public images by emotion & situation into every scene panel.
         </p>
       </div>
 
@@ -443,33 +435,33 @@ export function ProducePage() {
                   {(["top", "bottom"] as const)
                     .filter((slot) => dualScreen || slot === "top")
                     .map((slot) => {
-                    const src =
-                      slot === "top" ? sc.imageTopLocal : sc.imageBottomLocal;
-                    return (
-                      <div key={slot} className="flex-1">
-                        <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
-                          {src ? (
-                            <img src={src} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-[10px] text-muted">
-                              {slot}
-                            </div>
-                          )}
+                      const src =
+                        slot === "top" ? sc.imageTopLocal : sc.imageBottomLocal;
+                      return (
+                        <div key={slot} className="flex-1">
+                          <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
+                            {src ? (
+                              <img src={src} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-[10px] text-muted">
+                                {slot}
+                              </div>
+                            )}
+                          </div>
+                          <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
+                            <ImagePlus className="h-3 w-3" /> {slot}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                onSceneImage(sc.id, slot, e.target.files?.[0] ?? null)
+                              }
+                            />
+                          </label>
                         </div>
-                        <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
-                          <ImagePlus className="h-3 w-3" /> {slot}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) =>
-                              onSceneImage(sc.id, slot, e.target.files?.[0] ?? null)
-                            }
-                          />
-                        </label>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               </li>
             ))}
@@ -505,6 +497,17 @@ export function ProducePage() {
         onFacePerformanceChange={setFacePerformance}
         onMotionHint={setMotionIntensity}
         onStatus={setRecordStatus}
+        onApplyImages={(fills) => {
+          if (!movieId) return;
+          for (const f of fills) {
+            const patch: { imageTopLocal?: string; imageBottomLocal?: string } = {};
+            if (f.imageTop) patch.imageTopLocal = f.imageTop;
+            if (f.imageBottom) patch.imageBottomLocal = f.imageBottom;
+            if (patch.imageTopLocal || patch.imageBottomLocal) {
+              updateScene(movieId, f.sceneId, patch);
+            }
+          }
+        }}
         movie={{
           title: movie.title,
           language: movie.language,
@@ -562,14 +565,10 @@ export function ProducePage() {
           />
         </div>
         {cinemaCaption && (
-          <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">
-            {cinemaCaption}
-          </p>
+          <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">{cinemaCaption}</p>
         )}
         {recordStatus && (
-          <p className="border-t border-border px-3 py-2 text-center text-xs text-accent">
-            {recordStatus}
-          </p>
+          <p className="border-t border-border px-3 py-2 text-center text-xs text-accent">{recordStatus}</p>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
           <button
@@ -597,11 +596,7 @@ export function ProducePage() {
             )}
           </button>
           {lastExport && (
-            <button
-              type="button"
-              onClick={redownload}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted"
-            >
+            <button type="button" onClick={redownload} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted">
               <Download className="h-3.5 w-3.5" /> Re-download
             </button>
           )}
@@ -624,9 +619,7 @@ export function ProducePage() {
 
       <section className="mb-6 rounded-2xl border border-border bg-card p-4">
         <h2 className="mb-1 text-sm font-medium">AI motion / lip-sync worker (optional)</h2>
-        <p className="mb-2 text-xs text-muted">
-          Photoreal lips: self-host MuseTalk / Wav2Lip. POST /generate
-        </p>
+        <p className="mb-2 text-xs text-muted">Photoreal lips: self-host MuseTalk / Wav2Lip</p>
         <input
           value={workerUrl}
           onChange={(e) => setWorkerUrl(e.target.value)}
@@ -636,9 +629,7 @@ export function ProducePage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted">
-          Agents
-        </h2>
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted">Agents</h2>
         <ul className="space-y-2">
           {catalog.map((a) => (
             <li key={a.id} className="rounded-xl border border-border bg-card p-3">
