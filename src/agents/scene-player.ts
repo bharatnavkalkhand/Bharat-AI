@@ -1,5 +1,5 @@
 /**
- * Scene player: dual panel + caption + TTS + motion + accurate lip-sync + export.
+ * Scene player: dual/single + caption + TTS + motion + lip-sync + 3D avatar + export.
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -14,6 +14,7 @@ import {
   energyAt,
   type MouthCue,
 } from "./rhubarb-lipsync";
+import { drawAvatar3D } from "./avatar-3d";
 
 export interface PlayerScene {
   id: string;
@@ -39,8 +40,9 @@ export interface PlayerOptions {
   motionIntensity?: MotionIntensity;
   facePerformance?: boolean;
   useRhubarb?: boolean;
-  /** dual = top/bottom panels; single = full-frame */
   layout?: "dual" | "single";
+  /** Stylized 3D talking head with lip morphs */
+  use3dAvatar?: boolean;
 }
 
 export interface PlayResult {
@@ -82,6 +84,7 @@ type FaceOpts = {
   cues?: MouthCue[] | null;
   energy?: Float32Array | null;
   durationSec?: number;
+  use3dAvatar?: boolean;
 };
 
 function drawPanel(
@@ -106,6 +109,31 @@ function drawPanel(
   ctx.fillRect(x, y, w, h);
 
   const mot = motionAt(mood, t + phase, intensity);
+
+  if (faceOpts?.use3dAvatar && faceOpts.enabled) {
+    const e = faceOpts.speaking
+      ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
+      : undefined;
+    const smooth = faceOpts.speaking
+      ? smoothLipAtTime(faceOpts.cues, t, e)
+      : null;
+    const anim = faceAnimAt(
+      mood,
+      t,
+      faceOpts.textLen,
+      faceOpts.speaking,
+      smooth?.viseme,
+      smooth,
+    );
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.translate(mot.panX * 0.4, mot.panY * 0.4);
+    drawAvatar3D(ctx, x, y, w, h, mood, anim, t);
+    ctx.restore();
+    return;
+  }
 
   if (image && image.complete && image.naturalWidth) {
     const iw = image.naturalWidth;
@@ -150,28 +178,6 @@ function drawPanel(
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
-    ctx.fillStyle = "rgba(255,255,255,0.14)";
-    ctx.font = `600 ${Math.floor(w * 0.042)}px system-ui,sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const words = label.slice(0, 80).split(/\s+/);
-    let line = "";
-    const lines: string[] = [];
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > w * 0.85 && line) {
-        lines.push(line);
-        line = word;
-      } else line = test;
-    }
-    if (line) lines.push(line);
-    lines.slice(0, 3).forEach((ln, i) => {
-      ctx.fillText(
-        ln,
-        x + w / 2 + mot.panX * 0.3,
-        y + h / 2 + (i - 1) * 22 + mot.panY * 0.3,
-      );
-    });
     if (faceOpts?.enabled) {
       const e = faceOpts.speaking
         ? energyAt(faceOpts.energy, t, faceOpts.durationSec ?? 1)
@@ -187,13 +193,13 @@ function drawPanel(
         smooth?.viseme,
         smooth,
       );
-      const cx = x + w / 2;
-      const cy = y + h * 0.42;
-      ctx.fillStyle = "rgba(255,220,200,0.25)";
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, w * 0.18, h * 0.22, 0, 0, Math.PI * 2);
-      ctx.fill();
-      drawFaceOverlay(ctx, x, y, w, h, anim);
+      drawAvatar3D(ctx, x, y, w, h, mood, anim, t);
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.font = `600 ${Math.floor(w * 0.042)}px system-ui,sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label.slice(0, 40), x + w / 2, y + h / 2);
     }
     ctx.restore();
   }
@@ -308,9 +314,7 @@ function collectDialogueLines(
       : sc.narration
         ? [{ speaker: "Narrator", text: sc.narration }]
         : [{ speaker: "", text: sc.title }];
-    for (const t of turns) {
-      all.push({ ...t, sceneIndex });
-    }
+    for (const t of turns) all.push({ ...t, sceneIndex });
   });
   return all;
 }
@@ -333,6 +337,7 @@ function drawFrame(
   energy: Float32Array | null,
   durationSec: number,
   layout: "dual" | "single" = "dual",
+  use3dAvatar = false,
 ) {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
@@ -343,6 +348,7 @@ function drawFrame(
     cues,
     energy,
     durationSec,
+    use3dAvatar,
   };
 
   if (layout === "single") {
@@ -350,51 +356,21 @@ function drawFrame(
     const headH = Math.floor(h * 0.1);
     const mainH = h - headH - captionH;
     drawPanel(
-      ctx,
-      0,
-      0,
-      w,
-      mainH,
-      sc.mood,
-      sc.visualPrompt || sc.title,
-      imgTop || imgBot,
-      t,
-      intensity,
-      0,
-      faceOpts,
+      ctx, 0, 0, w, mainH, sc.mood, sc.visualPrompt || sc.title,
+      imgTop || imgBot, t, intensity, 0, faceOpts,
     );
     drawHeadline(ctx, w, mainH, headH, headline);
   } else {
     const midBand = Math.floor(h * 0.14);
     const panelH = Math.floor((h - midBand) / 2);
     drawPanel(
-      ctx,
-      0,
-      0,
-      w,
-      panelH,
-      sc.mood,
-      sc.visualPrompt || sc.title,
-      imgTop,
-      t,
-      intensity,
-      0,
-      faceOpts,
+      ctx, 0, 0, w, panelH, sc.mood, sc.visualPrompt || sc.title,
+      imgTop, t, intensity, 0, faceOpts,
     );
     drawHeadline(ctx, w, panelH, midBand, headline);
     drawPanel(
-      ctx,
-      0,
-      panelH + midBand,
-      w,
-      panelH,
-      sc.mood,
-      sc.title,
-      imgBot || imgTop,
-      t,
-      intensity,
-      0.7,
-      { ...faceOpts, speaking: false },
+      ctx, 0, panelH + midBand, w, panelH, sc.mood, sc.title,
+      imgBot || imgTop, t, intensity, 0.7, { ...faceOpts, speaking: false },
     );
   }
 
@@ -433,6 +409,7 @@ export async function playScenesOnCanvas(
   const facePerformance = options.facePerformance !== false;
   const useRhubarb = options.useRhubarb !== false;
   const layout = options.layout === "single" ? "single" : "dual";
+  const use3dAvatar = options.use3dAvatar === true;
   const headline =
     options.headline ||
     (options.language === "hi" ? "कहानी चल रही है…" : "Story in motion…");
@@ -480,8 +457,8 @@ export async function playScenesOnCanvas(
   const lineEnergy: Array<Float32Array | null> = [];
   const lineDur: number[] = [];
   let usedRhubarb = false;
-  if (facePerformance) {
-    options.onRecordProgress?.("Lip-sync: analyzing (Rhubarb + energy)…");
+  if (facePerformance || use3dAvatar) {
+    options.onRecordProgress?.("Lip-sync: Rhubarb + energy…");
     for (let i = 0; i < timed.length; i++) {
       const line = timed[i];
       const dur = line.durationSec || line.buffer?.duration || 2.5;
@@ -501,9 +478,7 @@ export async function playScenesOnCanvas(
       }
     }
     options.onRecordProgress?.(
-      usedRhubarb
-        ? "Accurate lip-sync ready (visemes + energy)…"
-        : "Text/energy lip-sync ready…",
+      usedRhubarb ? "Lip-sync ready (visemes)…" : "Energy lip-sync ready…",
     );
   } else {
     for (let i = 0; i < timed.length; i++) {
@@ -526,7 +501,6 @@ export async function playScenesOnCanvas(
     const picked = pickRecorderMime();
     mimeType = picked.mimeType;
     extension = picked.extension;
-
     if (audioCtx && usedServerTts) {
       dest = audioCtx.createMediaStreamDestination();
       mixedStream = new MediaStream([
@@ -537,7 +511,6 @@ export async function playScenesOnCanvas(
     } else {
       mixedStream = videoStream;
     }
-
     try {
       recorder = new MediaRecorder(mixedStream, {
         mimeType,
@@ -555,9 +528,7 @@ export async function playScenesOnCanvas(
         if (e.data && e.data.size > 0) chunks.push(e.data);
       };
       recorder.start(250);
-      options.onRecordProgress?.(
-        `Recording ${extension.toUpperCase()}${usedRhubarb ? " + Rhubarb" : ""}…`,
-      );
+      options.onRecordProgress?.(`Recording ${extension.toUpperCase()}…`);
     }
   }
 
@@ -569,7 +540,6 @@ export async function playScenesOnCanvas(
     options.onScene?.(si, scenes.length);
     const imgTop = await loadImg(sc.imageTop);
     const imgBot = await loadImg(sc.imageBottom);
-
     const turns = sc.dialogue
       ? parseTurns(sc.dialogue)
       : sc.narration
@@ -617,10 +587,7 @@ export async function playScenesOnCanvas(
         );
       }
 
-      const minHoldMs = Math.max(
-        2200,
-        ((line?.durationSec ?? 2.5) * 1000) | 0,
-      );
+      const minHoldMs = Math.max(2200, ((line?.durationSec ?? 2.5) * 1000) | 0);
       const textLen = turn.text.length;
 
       while (!signal?.stopped) {
@@ -629,23 +596,9 @@ export async function playScenesOnCanvas(
         if (elapsed > Math.max(minHoldMs + 500, 20000)) break;
 
         drawFrame(
-          ctx,
-          w,
-          h,
-          sc,
-          headline,
-          caption,
-          imgTop,
-          imgBot,
-          elapsed / 1000,
-          intensity,
-          !lineDone,
-          textLen,
-          facePerformance,
-          cues,
-          energy,
-          durationSec,
-          layout,
+          ctx, w, h, sc, headline, caption, imgTop, imgBot,
+          elapsed / 1000, intensity, !lineDone, textLen, facePerformance,
+          cues, energy, durationSec, layout, use3dAvatar,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
@@ -659,7 +612,7 @@ export async function playScenesOnCanvas(
     options.onRecordProgress?.("Finalizing file…");
     const blob = await new Promise<Blob>((resolve) => {
       recorder!.onstop = () => {
-        mixedStream?.getTracks().forEach((t) => t.stop());
+        mixedStream?.getTracks().forEach((tr) => tr.stop());
         resolve(new Blob(chunks, { type: recorder!.mimeType || mimeType }));
       };
       recorder!.stop();
