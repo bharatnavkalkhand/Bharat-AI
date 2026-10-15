@@ -1,0 +1,6 @@
+accelerate>=1.2.0
+diffusers>=0.35.0,<1.0
+ftfy>=6.3.0
+imageio[ffmpeg]>=2.36.0
+spaces
+transformers>=4.49.0,<5.0
