@@ -42,6 +42,7 @@ export interface PlayerOptions {
   record?: boolean;
   onRecordProgress?: (msg: string) => void;
   embedAudio?: boolean;
+  voiceGender?: "auto" | "male" | "female";
   motionIntensity?: MotionIntensity;
   facePerformance?: boolean;
   useRhubarb?: boolean;
@@ -278,6 +279,7 @@ function speakBrowser(
   text: string,
   language: "en" | "hi",
   speaker: string,
+  gender: "auto" | "male" | "female" = "auto",
 ): Promise<void> {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window) || !text.trim()) {
@@ -291,10 +293,14 @@ function speakBrowser(
     const pool = voices.filter((v) =>
       v.lang.toLowerCase().startsWith(language === "hi" ? "hi" : "en"),
     );
-    if (pool.length) {
+    const genderMatches = pool.filter((v) => gender === "auto" || (gender === "female"
+      ? /female|woman|zira|susan|aria|jenny|samantha|karen|moira|tessa|veena|lekha/i.test(v.name)
+      : /male|man|david|mark|guy|daniel|james|george|rishi|hemant/i.test(v.name)));
+    const selectedPool = genderMatches.length ? genderMatches : pool;
+    if (selectedPool.length) {
       let hash = 0;
       for (let i = 0; i < speaker.length; i++) hash += speaker.charCodeAt(i);
-      u.voice = pool[hash % pool.length];
+      u.voice = selectedPool[hash % selectedPool.length];
     }
     u.rate = 0.95;
     u.onend = () => resolve();
@@ -617,7 +623,7 @@ export async function playScenesOnCanvas(
         };
         src.start();
       } else {
-        speakBrowser(turn.text, options.language, turn.speaker || sc.mood).then(
+        speakBrowser(turn.text, options.language, turn.speaker || sc.mood, options.voiceGender ?? "auto").then(
           () => {
             lineDone = true;
           },
