@@ -150,9 +150,9 @@ export async function runVideoAgent(
 
   return {
     agentId: "video",
-    status: "succeeded",
+    status: "failed",
     message:
-      "Storyboard movie preview ready (free). To test real AI video, configure a running Hugging Face ZeroGPU Space URL in the Produce tab. The free worker makes short silent clips; full 5–10 minute movie assembly is not yet implemented.",
+      "No real AI video was generated. This is only a storyboard/2D motion preview. Configure a running Hugging Face ZeroGPU Space to attempt a short silent AI clip; full 5–10 minute movie assembly is not yet implemented.",
     outputText: board
       .map(
         (f, i) =>
