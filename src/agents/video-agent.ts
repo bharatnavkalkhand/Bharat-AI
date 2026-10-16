@@ -81,9 +81,18 @@ export async function runVideoAgent(
     // First prove the real generation path end-to-end. The free ZeroGPU
     // allowance is small, so do not silently spend it on every storyboard scene.
     const firstScene = [...input.scenes].sort((a, b) => a.order - b.order)[0];
-    const prompt =
-      firstScene?.visualPrompt ||
-      `${firstScene?.title || input.title}, cinematic scene, ${firstScene?.mood || "dramatic"} mood`;
+    const selectedIds = firstScene?.characterIds ?? [];
+    const sceneCharacters = input.characters.filter((character) =>
+      selectedIds.length ? selectedIds.includes(character.id) : true,
+    );
+    const castDescription = sceneCharacters
+      .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
+      .join("; ");
+    const prompt = [
+      firstScene?.visualPrompt || `${firstScene?.title || input.title}, ${firstScene?.mood || "dramatic"} cinematic scene`,
+      castDescription ? `Keep these characters visually consistent: ${castDescription}` : "",
+      "photorealistic live-action cinematic video, realistic human or humanoid anatomy, natural full-body movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, no cartoon, no illustration, no 2D motion graphics, no subtitles, no text",
+    ].filter(Boolean).join(". ");
     const generated = await generateSilentClip({
       spaceUrl: normalizedWorkerUrl,
       prompt,
