@@ -106,6 +106,7 @@ export async function runMoviePipeline(
           id: `c-${i}`,
           name: character.name,
           role: character.role,
+          appearance: character.appearance,
         }));
         const allCharacterIds = characters.map((character) => character.id);
         const scenes = scriptOut.scenes.map((sc, order) => {
