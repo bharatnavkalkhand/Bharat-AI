@@ -5,8 +5,8 @@
  *   POST {space}/gradio_api/call/generate
  *   GET  {space}/gradio_api/call/generate/{event_id}
  *
- * Free tier ~5 GPU minutes/day — short silent 16:9 clips only.
- * Audio is added later in Bharat AI pipeline.
+ * Free tier quota is limited and varies by account/Space. Generates short,
+ * silent 16:9 clips only; audio is added in a separate stage.
  */
 
 import {
@@ -30,7 +30,6 @@ function framesToSeconds(frames: number): number {
 
 /** Rough GPU-seconds estimate for ranking (empirical headroom) */
 export function estimateZeroGpuSeconds(frames: number): number {
-  // 16 steps @ 480x832 — typical 40–90s wall; reserve conservatively
   if (frames <= 17) return 45;
   if (frames <= 33) return 75;
   return 110;
@@ -46,27 +45,68 @@ interface GradioJob {
 const jobs = new Map<string, GradioJob>();
 
 function normalizeSpaceUrl(url: string): string {
-  let u = url.trim().replace(/\/$/, "");
-  // Accept huggingface.co/spaces/user/name → https://user-name.hf.space
-  const m = u.match(
+  const trimmed = url.trim().replace(/\/$/, "");
+  const match = trimmed.match(
     /huggingface\.co\/spaces\/([^/]+)\/([^/?#]+)/i,
   );
-  if (m) {
-    const user = m[1].toLowerCase().replace(/_/g, "-");
-    const name = m[2].toLowerCase().replace(/_/g, "-");
+  if (match) {
+    const user = match[1].toLowerCase().replace(/_/g, "-");
+    const name = match[2].toLowerCase().replace(/_/g, "-");
     return `https://${user}-${name}.hf.space`;
   }
-  return u;
+  return trimmed;
 }
 
 async function sleep(ms: number) {
-  await new Promise((r) => setTimeout(r, ms));
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Submit to Gradio queue API.
- * data = [prompt, num_frames, seed]
- */
+/** Gradio Video outputs vary by version: string, {url}, {path}, or {video:{...}}. */
+function extractVideoUrl(value: unknown, spaceBase: string): string | null {
+  if (typeof value === "string") {
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith("/gradio_api/file=") || value.startsWith("/file=")) {
+      return `${spaceBase}${value}`;
+    }
+    if (value.startsWith("/")) {
+      return `${spaceBase}/gradio_api/file=${value}`;
+    }
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractVideoUrl(item, spaceBase);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    // Prefer a directly supplied URL, then recurse into common Gradio Video fields.
+    if (typeof record.url === "string") {
+      const direct = extractVideoUrl(record.url, spaceBase);
+      if (direct) return direct;
+    }
+    if (typeof record.path === "string") {
+      const fromPath = extractVideoUrl(record.path, spaceBase);
+      if (fromPath) return fromPath;
+    }
+    if ("video" in record) {
+      const nested = extractVideoUrl(record.video, spaceBase);
+      if (nested) return nested;
+    }
+    if ("data" in record) {
+      const nested = extractVideoUrl(record.data, spaceBase);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+}
+
+/** Submit to Gradio queue API. data = [prompt, num_frames, seed]. */
 async function gradioCall(
   spaceBase: string,
   prompt: string,
@@ -83,11 +123,11 @@ async function gradioCall(
     throw new QuotaUnavailableError("HF ZeroGPU busy or daily quota exhausted");
   }
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    if (/quota|limit|gpu|busy|429/i.test(text)) {
-      throw new QuotaUnavailableError(text.slice(0, 200));
+    const body = await res.text().catch(() => "");
+    if (/quota|limit|gpu|busy|429/i.test(body)) {
+      throw new QuotaUnavailableError(body.slice(0, 200));
     }
-    throw new Error(`HF Gradio call failed: ${res.status} ${text.slice(0, 120)}`);
+    throw new Error(`HF Gradio call failed: ${res.status} ${body.slice(0, 120)}`);
   }
 
   const body = (await res.json()) as { event_id?: string };
@@ -95,10 +135,7 @@ async function gradioCall(
   return body.event_id;
 }
 
-/**
- * Poll Gradio event stream for result.
- * Returns video URL (often a temporary HF file URL).
- */
+/** Poll Gradio event stream for a result and normalize the Video component payload. */
 async function gradioPoll(
   spaceBase: string,
   eventId: string,
@@ -113,7 +150,7 @@ async function gradioPoll(
       if (res.status === 429 || res.status === 503) {
         return {
           status: "failed",
-          error: "quota or busy",
+          error: "HF ZeroGPU quota exhausted or Space busy",
           retryable: true,
         };
       }
@@ -123,70 +160,55 @@ async function gradioPoll(
       }
 
       const text = await res.text();
-      // Gradio streams SSE-like lines: event: ... / data: ...
       const dataLines = text
         .split("\n")
-        .filter((l) => l.startsWith("data:"))
-        .map((l) => l.slice(5).trim());
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
 
       for (const line of dataLines) {
-        if (line === "null" || line === "") continue;
+        if (!line || line === "null") continue;
         try {
           const parsed = JSON.parse(line) as unknown;
-          // Complete: [videoPathOrUrl, ...] or { video: url }
-          if (Array.isArray(parsed) && parsed[0]) {
-            const v = parsed[0];
-            const url =
-              typeof v === "string"
-                ? v
-                : typeof v === "object" &&
-                    v &&
-                    "url" in v &&
-                    typeof (v as { url: string }).url === "string"
-                  ? (v as { url: string }).url
-                  : null;
-            if (url) {
-              // Relative paths → absolute on Space
-              const videoUrl = url.startsWith("http")
-                ? url
-                : `${spaceBase}/file=${url}`;
-              return { status: "succeeded", videoUrl };
-            }
-          }
+          const videoUrl = extractVideoUrl(parsed, spaceBase);
+          if (videoUrl) return { status: "succeeded", videoUrl };
+
           if (
             parsed &&
             typeof parsed === "object" &&
-            "error" in (parsed as object)
+            !Array.isArray(parsed) &&
+            "error" in parsed
           ) {
+            const error = (parsed as { error: unknown }).error;
             return {
               status: "failed",
-              error: String((parsed as { error: unknown }).error),
+              error: String(error ?? "Gradio generation failed"),
               retryable: true,
             };
           }
         } catch {
-          /* keep polling */
+          // Ignore non-JSON heartbeat/progress lines and keep polling.
         }
       }
 
-      // Still processing
-      if (/process|queue|pending|running/i.test(text) || dataLines.length === 0) {
-        await sleep(3000);
-        continue;
+      if (/event: complete/.test(text) && dataLines.length > 0) {
+        return {
+          status: "failed",
+          error: "Gradio completed without returning a recognizable video URL",
+          retryable: false,
+        };
       }
+      await sleep(3000);
     } catch {
       await sleep(3000);
-      continue;
     }
-    await sleep(3000);
   }
   return { status: "failed", error: "timeout", retryable: true };
 }
 
 /**
- * Create GpuWorkerAdapter for a deployed ZeroGPU Space.
+ * Create a worker adapter for a deployed ZeroGPU Space.
  * @param spaceUrl e.g. https://user-bharat-ai-video-worker.hf.space
- *                  or https://huggingface.co/spaces/user/bharat-ai-video-worker
+ * or https://huggingface.co/spaces/user/bharat-ai-video-worker
  */
 export function createHfZeroGpuWorker(
   spaceUrl: string,
@@ -194,20 +216,17 @@ export function createHfZeroGpuWorker(
 ): GpuWorkerAdapter {
   const spaceBase = normalizeSpaceUrl(spaceUrl);
   const id = opts?.id || "hf-zerogpu";
-  // Free tier default: 5 minutes = 300 seconds GPU time
+  // Estimate only: public ZeroGPU quota is not exposed as a remaining balance.
   const dailySeconds = (opts?.dailyGpuMinutes ?? 5) * 60;
 
   return {
     id,
 
-    supports(req: ShotRequest) {
-      // Worker is 16:9 @ 832x480
-      return req.aspectRatio === "16:9" && req.durationSec <= 4;
+    supports(request: ShotRequest) {
+      return request.aspectRatio === "16:9" && request.durationSec <= 4;
     },
 
     async quota(): Promise<WorkerQuota> {
-      // ZeroGPU does not expose remaining quota via public API.
-      // Optimistic: available until we hit 429/503.
       try {
         const res = await fetch(spaceBase, { method: "GET" });
         if (!res.ok && res.status >= 500) {
@@ -220,66 +239,52 @@ export function createHfZeroGpuWorker(
         }
         return {
           available: true,
-          // Unknown remaining — report daily budget so ranking still works
           remainingUnits: dailySeconds,
           unit: "gpu-seconds",
-          reason: "HF ZeroGPU does not publish remaining quota; estimate only",
+          reason: "Estimate only; HF ZeroGPU does not publish remaining quota",
         };
-      } catch (e) {
+      } catch (error) {
         return {
           available: false,
           remainingUnits: null,
           unit: "gpu-seconds",
-          reason: e instanceof Error ? e.message : "unreachable",
+          reason: error instanceof Error ? error.message : "unreachable",
         };
       }
     },
 
-    estimateUnits(req: ShotRequest) {
-      const frames = durationToFrames(req.durationSec);
-      return estimateZeroGpuSeconds(frames);
+    estimateUnits(request: ShotRequest) {
+      return estimateZeroGpuSeconds(durationToFrames(request.durationSec));
     },
 
-    async submit(req: ShotRequest, idempotencyKey: string) {
-      const frames = durationToFrames(req.durationSec);
-      const seed = req.seed || Math.floor(Math.random() * 1e9);
-      const eventId = await gradioCall(spaceBase, req.prompt, frames, seed);
-      jobs.set(idempotencyKey, {
-        eventId,
-        spaceBase,
-        startedAt: Date.now(),
-      });
-      // Also index by eventId for status()
-      jobs.set(eventId, {
-        eventId,
-        spaceBase,
-        startedAt: Date.now(),
-      });
+    async submit(request: ShotRequest, idempotencyKey: string) {
+      const frames = durationToFrames(request.durationSec);
+      const seed = request.seed || Math.floor(Math.random() * 1e9);
+      const eventId = await gradioCall(spaceBase, request.prompt, frames, seed);
+      const job = { eventId, spaceBase, startedAt: Date.now() };
+      jobs.set(idempotencyKey, job);
+      jobs.set(eventId, job);
       return { remoteJobId: eventId };
     },
 
     async status(remoteJobId: string): Promise<RemoteJobStatus> {
       const job = jobs.get(remoteJobId);
-      const base = job?.spaceBase || spaceBase;
-      return gradioPoll(base, remoteJobId);
+      return gradioPoll(job?.spaceBase || spaceBase, remoteJobId);
     },
   };
 }
 
-/**
- * One-shot helper: generate a short silent clip and return video URL.
- * Uses ~1 quota unit; prefer for testing after Space is live.
- */
+/** One-shot helper for a short silent test clip. */
 export async function generateSilentClip(opts: {
   spaceUrl: string;
   prompt: string;
   durationSec?: number;
   seed?: number;
-  onProgress?: (msg: string) => void;
+  onProgress?: (message: string) => void;
 }): Promise<{ videoUrl: string; frames: number } | { error: string }> {
   const worker = createHfZeroGpuWorker(opts.spaceUrl);
   const frames = durationToFrames(opts.durationSec ?? 2);
-  const req: ShotRequest = {
+  const request: ShotRequest = {
     movieId: "test",
     sceneId: "shot-0",
     prompt: opts.prompt,
@@ -292,17 +297,15 @@ export async function generateSilentClip(opts: {
 
   opts.onProgress?.("Submitting to HF ZeroGPU…");
   try {
-    const { remoteJobId } = await worker.submit(req, `clip-${Date.now()}`);
+    const { remoteJobId } = await worker.submit(request, `clip-${Date.now()}`);
     opts.onProgress?.("Queued — generating (may take 1–2 min)…");
-    const st = await worker.status(remoteJobId);
-    if (st.status === "succeeded") {
-      return { videoUrl: st.videoUrl, frames };
+    const status = await worker.status(remoteJobId);
+    if (status.status === "succeeded") {
+      return { videoUrl: status.videoUrl, frames };
     }
-    return { error: st.status === "failed" ? st.error : "unknown" };
-  } catch (e) {
-    if (e instanceof QuotaUnavailableError) {
-      return { error: e.message };
-    }
-    return { error: e instanceof Error ? e.message : "failed" };
+    return { error: status.status === "failed" ? status.error : "unknown" };
+  } catch (error) {
+    if (error instanceof QuotaUnavailableError) return { error: error.message };
+    return { error: error instanceof Error ? error.message : "failed" };
   }
 }
