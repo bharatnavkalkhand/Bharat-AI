@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Code Review
+        if: ${{ secrets.XAI_API_KEY != '' }}
         uses: tarmojussila/xai-code-review@v0.1.1
         with:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+      - name: Explain skipped review
+        if: ${{ secrets.XAI_API_KEY == '' }}
+        run: echo "Skipping optional xAI review because XAI_API_KEY is not configured."
