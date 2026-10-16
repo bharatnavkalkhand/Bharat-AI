@@ -110,8 +110,8 @@ export async function runMoviePipeline(
         const allCharacterIds = characters.map((character) => character.id);
         const scenes = scriptOut.scenes.map((sc, order) => {
           const speakerNames = (sc.dialogue || "")
-            .split(/\\n+/)
-            .map((line) => line.match(/^([^:]{1,40}):\\s*.+$/)?.[1]?.trim().toLocaleLowerCase())
+            .split(/\n+/)
+            .map((line) => line.match(/^([^:]{1,40}):\s*.+$/)?.[1]?.trim().toLocaleLowerCase())
             .filter((name): name is string => Boolean(name));
           const matchedIds = characters
             .filter((character) => speakerNames.includes(character.name.toLocaleLowerCase()))
