@@ -24,3 +24,5 @@ jobs:
         run: npm run typecheck
       - name: Production build
         run: npm run build
+      - name: Validate ZeroGPU worker Python syntax
+        run: python -m py_compile workers/hf-zerogpu/app.py
