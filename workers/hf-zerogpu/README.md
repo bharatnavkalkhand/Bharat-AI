@@ -19,7 +19,9 @@ Short **silent 16:9** scene clips using **Wan 2.1 T2V 1.3B**.
 
 ## Limits
 
-- Free accounts: ~**5 GPU minutes / day**
+- Free accounts: **5 GPU minutes per 24-hour quota window** (shared across ZeroGPU Spaces)
+- Each generation requests up to **60 GPU seconds**; very short clips and low step counts are used to fit the free per-call limit
+- First Space startup downloads the model weights, so initial boot can take several minutes
 - Clip lengths: 17 / 33 / 49 frames @ 16 fps (~1–3 s)
 - Resolution: 832×480 (16:9)
 - **No audio** in this worker — Bharat AI adds TTS later
