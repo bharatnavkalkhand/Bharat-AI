@@ -186,7 +186,7 @@ export function HomePage() {
           </button>
         </div>
         <div className="scroll-x-hide flex gap-2.5 pb-1">
-          {BHARAT_TEMPLATES.slice(0, 5).map((tpl) => (
+          {BHARAT_TEMPLATES.slice(0, 2).map((tpl) => (
             <button
               key={tpl.id}
               type="button"

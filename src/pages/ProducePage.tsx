@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { runMoviePipeline, getAgentCatalog } from "@/agents/orchestrator";
-import { stopVoice, type NarrationLine } from "@/agents/voice-agent";
+import { stopVoice } from "@/agents/voice-agent";
 import type { StoryboardFrame } from "@/agents/video-agent";
 import type { AgentStageStatus, PipelineState } from "@/agents/types";
 import {
@@ -76,8 +76,8 @@ export function ProducePage() {
     lastMessage: "Ready to produce", updatedAt: new Date().toISOString(),
   });
   const [running, setRunning] = useState(false);
-  const [currentLine, setCurrentLine] = useState<NarrationLine | null>(null);
   const [storyboard, setStoryboard] = useState<StoryboardFrame[]>([]);
+  const [generatedClipUrl, setGeneratedClipUrl] = useState("");
   const [frameIndex, setFrameIndex] = useState(0);
   const [playingBoard, setPlayingBoard] = useState(false);
   const [playingCinema, setPlayingCinema] = useState(false);
@@ -90,6 +90,7 @@ export function ProducePage() {
   );
   const [doScript, setDoScript] = useState(true);
   const [doVoice, setDoVoice] = useState(false);
+  const [voiceGender, setVoiceGender] = useState<"auto" | "male" | "female">("auto");
   const [doVideo, setDoVideo] = useState(true);
   const [headline, setHeadline] = useState("");
   const [motionIntensity, setMotionIntensity] = useState<MotionIntensity>("high");
@@ -162,7 +163,6 @@ export function ProducePage() {
     stopVoice();
     stopScenePlayer();
     stopRef.current.stopped = true;
-    setCurrentLine(null);
     setLastExport(null);
 
     // Reset progress UI
@@ -195,9 +195,10 @@ export function ProducePage() {
         scenes: movie.scenes.map((s) => ({
           id: s.id, order: s.order, title: s.title, mood: s.mood, dialogue: s.dialogue,
           narration: s.narration, gestureNotes: s.gestureNotes, visualPrompt: s.visualPrompt,
+          characterIds: s.characterIds,
         })),
-        characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role })),
-        options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined },
+        characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role, appearance: c.appearance })),
+        options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined, voiceGender },
       },
       { script: doScript, voice: doVoice, video: doVideo },
       {
@@ -216,10 +217,12 @@ export function ProducePage() {
             setProgressPercent((p) => Math.max(p, 40));
           }
         },
-        onNarrationLine: (line) => setCurrentLine(line),
+        onNarrationLine: () => undefined,
       },
     );
     setPipeline(result.pipeline);
+    const clipUrl = result.video?.data?.clipUrl;
+    setGeneratedClipUrl(typeof clipUrl === "string" && /^https:\/\//i.test(clipUrl) ? clipUrl : "");
 
     if (result.script) {
       applyScriptResult(movieId, result.script, { replaceCast: true, replaceScenes: true });
@@ -332,7 +335,6 @@ export function ProducePage() {
     setProgressPercent(100);
     setOverallPhase("ready");
     setRunning(false);
-    setCurrentLine(null);
   }
 
   function stopAll() {
@@ -343,7 +345,6 @@ export function ProducePage() {
     setPlayingCinema(false);
     setExporting(false);
     setRunning(false);
-    setCurrentLine(null);
     if (overallPhase !== "ready") {
       setOverallPhase("idle");
       setProgressPercent(0);
@@ -397,6 +398,7 @@ export function ProducePage() {
           height: record ? 676 : 450,
           record,
           embedAudio: true,
+          voiceGender,
           motionIntensity,
           facePerformance: facePerformance || use3dAvatar,
           layout: dualScreen ? "dual" : "single",
@@ -491,6 +493,30 @@ export function ProducePage() {
         <p className="px-1 text-xs text-muted">{pipeline.lastMessage}</p>
       </section>
 
+      {generatedClipUrl && (
+        <section className="mb-5 card-pro space-y-3 p-3">
+          <div>
+            <h2 className="text-sm font-semibold">Generated AI video clip</h2>
+            <p className="text-xs text-muted">Short silent test clip from your configured Hugging Face worker.</p>
+          </div>
+          <video
+            className="w-full rounded-xl bg-black"
+            src={generatedClipUrl}
+            controls
+            playsInline
+            preload="metadata"
+          />
+          <a
+            className="btn-primary inline-flex items-center gap-2 px-3 py-2 text-xs"
+            href={generatedClipUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Download className="h-3.5 w-3.5" /> Open / save generated clip
+          </a>
+        </section>
+      )}
+
       <div className="mb-4 flex flex-wrap gap-3 text-xs">
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={doScript} onChange={(e) => setDoScript(e.target.checked)} /> Script
@@ -502,6 +528,16 @@ export function ProducePage() {
           <input type="checkbox" checked={doVideo} onChange={(e) => setDoVideo(e.target.checked)} /> Video
         </label>
       </div>
+
+      <section className="mb-4 card-pro space-y-2 p-3">
+        <label className="block text-xs font-semibold" htmlFor="voice-gender">Voice type</label>
+        <select id="voice-gender" value={voiceGender} onChange={(e) => setVoiceGender(e.target.value as "auto" | "male" | "female")} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm">
+          <option value="auto">Auto / device default</option>
+          <option value="male">Male voice</option>
+          <option value="female">Female voice</option>
+        </select>
+        <p className="text-[11px] leading-relaxed text-muted">Uses male/female voices available on this device and language. Availability depends on your browser; this is not voice cloning.</p>
+      </section>
 
       <div className="mb-4 flex gap-2">
         <button type="button" disabled={busy} onClick={runPipeline}
@@ -520,6 +556,25 @@ export function ProducePage() {
             {sortedScenes.slice(0, 8).map((sc, idx) => (
               <li key={sc.id} className="card-pro p-3">
                 <p className="mb-2 text-xs font-medium">{idx + 1}. {sc.title} <span className="text-muted">({sc.mood})</span></p>
+                {movie.characters.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-border/70 p-2">
+                    <p className="mb-1.5 text-[10px] font-semibold text-muted">Scene characters (auto-selected; edit if needed)</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                      {movie.characters.map((character) => {
+                        const selected = sc.characterIds.includes(character.id);
+                        return <label key={character.id} className="flex items-center gap-1 text-[11px]">
+                          <input type="checkbox" checked={selected} onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...new Set([...sc.characterIds, character.id])]
+                              : sc.characterIds.filter((id) => id !== character.id);
+                            updateScene(movie.id, sc.id, { characterIds: next });
+                          }} />
+                          {character.name}
+                        </label>;
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => {
                     const src =

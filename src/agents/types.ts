@@ -36,15 +36,18 @@ export interface AgentRunInput {
     narration?: string;
     gestureNotes?: string;
     visualPrompt?: string;
+    characterIds?: string[];
   }>;
   characters: Array<{
     id: string;
     name: string;
     role?: string;
+    appearance?: string;
   }>;
   options?: {
     useCloudLlm?: boolean;
     workerUrl?: string;
+    voiceGender?: "auto" | "male" | "female";
   };
 }
 

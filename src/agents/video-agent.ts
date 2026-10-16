@@ -1,4 +1,5 @@
 import type { AgentRunInput, AgentRunResult } from "./types";
+import { generateSilentClip } from "./hf-zerogpu-worker";
 
 export interface StoryboardFrame {
   sceneId: string;
@@ -47,8 +48,9 @@ export function buildStoryboard(input: AgentRunInput): StoryboardFrame[] {
 }
 
 /**
- * Free path: builds a timed storyboard "movie preview".
- * Paid/GPU path: if workerUrl is set, attempts to enqueue real generation.
+ * Video stage. Without a worker, keep the free storyboard preview.
+ * Hugging Face Spaces use Gradio's queue API (not the generic /generate
+ * contract), so route those URLs through the dedicated ZeroGPU adapter.
  */
 export async function runVideoAgent(
   input: AgentRunInput,
@@ -70,10 +72,67 @@ export async function runVideoAgent(
     (typeof localStorage !== "undefined"
       ? localStorage.getItem("bharat_video_worker_url") || ""
       : "");
+  const normalizedWorkerUrl = workerUrl.trim().replace(/\/$/, "");
+  const isHuggingFaceSpace =
+    /(^https?:\/\/[^/]+\.hf\.space$)/i.test(normalizedWorkerUrl) ||
+    /huggingface\.co\/spaces\//i.test(normalizedWorkerUrl);
 
-  if (workerUrl) {
+  if (normalizedWorkerUrl && isHuggingFaceSpace) {
+    // First prove the real generation path end-to-end. The free ZeroGPU
+    // allowance is small, so do not silently spend it on every storyboard scene.
+    const firstScene = [...input.scenes].sort((a, b) => a.order - b.order)[0];
+    const selectedIds = firstScene?.characterIds ?? [];
+    const sceneCharacters = input.characters.filter((character) =>
+      selectedIds.length ? selectedIds.includes(character.id) : true,
+    );
+    const castDescription = sceneCharacters
+      .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
+      .join("; ");
+    const prompt = [
+      firstScene?.visualPrompt || `${firstScene?.title || input.title}, ${firstScene?.mood || "dramatic"} cinematic scene`,
+      castDescription ? `Keep these characters visually consistent: ${castDescription}` : "",
+      "photorealistic live-action cinematic video, realistic human or humanoid anatomy, natural full-body movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, no cartoon, no illustration, no 2D motion graphics, no subtitles, no text",
+    ].filter(Boolean).join(". ");
+    const generated = await generateSilentClip({
+      spaceUrl: normalizedWorkerUrl,
+      prompt,
+      durationSec: 2,
+      seed: 42,
+    });
+
+    if ("videoUrl" in generated) {
+      return {
+        agentId: "video",
+        status: "succeeded",
+        message: `Real AI video clip generated. Open/copy this MP4 URL: ${generated.videoUrl} — short silent test clip; full movie assembly is the next stage.`,
+        outputText: `Generated real clip for scene: ${firstScene?.title || input.title}\nVideo: ${generated.videoUrl}`,
+        data: {
+          board,
+          mode: "hf-zero-gpu",
+          clipUrl: generated.videoUrl,
+          clipFrames: generated.frames,
+          clipSceneId: firstScene?.id,
+          clipDurationSec: generated.frames / 16,
+        },
+        durationMs: performance.now() - t0,
+      };
+    }
+
+    return {
+      agentId: "video",
+      status: "failed",
+      message: `Real AI video generation failed: ${generated.error}. No MP4 was produced. Check the Hugging Face Space URL, its build/runtime logs, and free GPU availability.`,
+      outputText: board
+        .map((f, i) => `Storyboard only — frame ${i + 1}: ${f.title} [${f.mood}] ${f.durationSec}s — ${f.visualPrompt}`)
+        .join("\n"),
+      data: { board, mode: "storyboard", workerError: generated.error },
+      durationMs: performance.now() - t0,
+    };
+  }
+
+  if (normalizedWorkerUrl) {
     try {
-      const res = await fetch(`${workerUrl.replace(/\/$/, "")}/generate`, {
+      const res = await fetch(`${normalizedWorkerUrl}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -87,8 +146,8 @@ export async function runVideoAgent(
         const data = (await res.json()) as Record<string, unknown>;
         return {
           agentId: "video",
-          status: "succeeded",
-          message: "Video worker accepted job. Poll worker for MP4 when ready.",
+          status: "queued",
+          message: "Video worker accepted the job, but no MP4 has been returned yet. This stage remains queued until the worker exposes a completed clip.",
           data: { board, worker: data },
           durationMs: performance.now() - t0,
         };
@@ -100,9 +159,9 @@ export async function runVideoAgent(
 
   return {
     agentId: "video",
-    status: "succeeded",
+    status: "failed",
     message:
-      "Storyboard movie preview ready (free). Real avatar MP4 needs an open-source GPU worker (ComfyUI/AnimateDiff). Set worker URL in Produce tab to upgrade.",
+      "No real AI video was generated. This is only a storyboard/2D motion preview. Configure a running Hugging Face ZeroGPU Space to attempt a short silent AI clip; full 5–10 minute movie assembly is not yet implemented.",
     outputText: board
       .map(
         (f, i) =>
@@ -113,7 +172,7 @@ export async function runVideoAgent(
       board,
       mode: "storyboard",
       upgrade:
-        "Self-host: ComfyUI + AnimateDiff / Wan 2.1 / Open-Sora. Point WORKER_URL to your free worker API.",
+        "Deploy workers/hf-zerogpu as a Gradio ZeroGPU Space and set its URL in Produce.",
     },
     durationMs: performance.now() - t0,
   };

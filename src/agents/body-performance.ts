@@ -54,8 +54,6 @@ export function drawBodyPerformance(
   const action = moodToBodyAction(mood, speaking);
   const cx = x + w * 0.5;
   const ground = y + h * 0.92;
-  const scale = Math.min(w, h) * 0.00115;
-  const unit = 100 * scale * Math.min(w, h) * 0.01;
   // Use relative sizes
   const headR = Math.min(w, h) * 0.055;
   const torsoH = Math.min(w, h) * 0.16;
