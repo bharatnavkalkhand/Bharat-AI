@@ -101,24 +101,35 @@ export async function runMoviePipeline(
 
   // Merge generated scenes into input for downstream agents
   const enriched: AgentRunInput = scriptOut
-    ? {
-        ...input,
-        scenes: scriptOut.scenes.map((sc, order) => ({
-          id: `gen-${order}`,
-          order,
-          title: sc.title,
-          mood: sc.mood,
-          dialogue: sc.dialogue,
-          narration: sc.narration,
-          gestureNotes: sc.gestureNotes,
-          visualPrompt: sc.visualPrompt,
-        })),
-        characters: scriptOut.characters.map((c, i) => ({
+    ? (() => {
+        const characters = scriptOut.characters.map((character, i) => ({
           id: `c-${i}`,
-          name: c.name,
-          role: c.role,
-        })),
-      }
+          name: character.name,
+          role: character.role,
+        }));
+        const allCharacterIds = characters.map((character) => character.id);
+        const scenes = scriptOut.scenes.map((sc, order) => {
+          const speakerNames = (sc.dialogue || "")
+            .split(/\\n+/)
+            .map((line) => line.match(/^([^:]{1,40}):\\s*.+$/)?.[1]?.trim().toLocaleLowerCase())
+            .filter((name): name is string => Boolean(name));
+          const matchedIds = characters
+            .filter((character) => speakerNames.includes(character.name.toLocaleLowerCase()))
+            .map((character) => character.id);
+          return {
+            id: `gen-${order}`,
+            order,
+            title: sc.title,
+            mood: sc.mood,
+            dialogue: sc.dialogue,
+            narration: sc.narration,
+            gestureNotes: sc.gestureNotes,
+            visualPrompt: sc.visualPrompt,
+            characterIds: matchedIds.length ? matchedIds : allCharacterIds,
+          };
+        });
+        return { ...input, scenes, characters };
+      })()
     : input;
 
   // —— VOICE ——
