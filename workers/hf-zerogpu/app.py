@@ -1,5 +1,6 @@
 import os
 import tempfile
+from typing import Optional
 
 import gradio as gr
 import spaces
@@ -14,21 +15,32 @@ NEGATIVE_PROMPT = (
     "text, subtitles, watermark, flicker, abrupt camera movement"
 )
 
-vae = AutoencoderKLWan.from_pretrained(
-    MODEL_ID,
-    subfolder="vae",
-    torch_dtype=torch.float32,
-)
-pipe = WanPipeline.from_pretrained(
-    MODEL_ID,
-    vae=vae,
-    torch_dtype=torch.bfloat16,
-)
-pipe.scheduler = UniPCMultistepScheduler.from_config(
-    pipe.scheduler.config,
-    flow_shift=3.0,
-)
-pipe.to("cuda")
+# IMPORTANT: ZeroGPU only grants CUDA access while a @spaces.GPU function runs.
+# Do not load the model or call pipe.to("cuda") at module import time, or the
+# Space can fail before a GPU allocation is available.
+pipe: Optional[WanPipeline] = None
+
+
+def get_pipeline() -> WanPipeline:
+    global pipe
+    if pipe is None:
+        vae = AutoencoderKLWan.from_pretrained(
+            MODEL_ID,
+            subfolder="vae",
+            torch_dtype=torch.float32,
+        )
+        loaded = WanPipeline.from_pretrained(
+            MODEL_ID,
+            vae=vae,
+            torch_dtype=torch.bfloat16,
+        )
+        loaded.scheduler = UniPCMultistepScheduler.from_config(
+            loaded.scheduler.config,
+            flow_shift=3.0,
+        )
+        loaded.to("cuda")
+        pipe = loaded
+    return pipe
 
 
 @spaces.GPU(duration=240)
@@ -39,14 +51,15 @@ def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
     if num_frames not in (17, 33, 49):
         raise gr.Error("Choose a supported short clip length.")
 
-    generator = torch.Generator(device="cuda").manual_seed(int(seed))
     try:
-        frames = pipe(
+        pipeline = get_pipeline()
+        generator = torch.Generator(device="cuda").manual_seed(int(seed))
+        frames = pipeline(
             prompt=prompt,
             negative_prompt=NEGATIVE_PROMPT,
             height=480,
             width=832,
-            num_frames=num_frames,
+            num_frames=int(num_frames),
             num_inference_steps=16,
             guidance_scale=5.0,
             generator=generator,
@@ -56,6 +69,11 @@ def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
         os.close(handle)
         export_to_video(frames, output_path, fps=16)
         return output_path
+    except gr.Error:
+        raise
+    except Exception as exc:
+        # Show a useful failure in the Gradio UI/API rather than a blank result.
+        raise gr.Error(f"Video generation failed: {type(exc).__name__}: {exc}") from exc
     finally:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -64,7 +82,8 @@ def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
 with gr.Blocks(title="Bharat AI Video Worker") as demo:
     gr.Markdown(
         "# Bharat AI Video Worker\n"
-        "Generate short, silent 16:9 scene clips. Audio is added in a separate stage."
+        "Generate short, silent 16:9 scene clips. Audio is added in a separate stage. "
+        "The model loads on the first GPU request, not at app startup."
     )
     prompt = gr.Textbox(
         label="Scene prompt",
