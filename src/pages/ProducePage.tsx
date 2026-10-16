@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -32,6 +32,13 @@ import {
 } from "@/agents/visual-binder";
 import type { MotionIntensity } from "@/agents/motion-engine";
 import { DirectorControls } from "@/components/DirectorControls";
+import {
+  SceneProgressPanel,
+  scenesToProgressItems,
+  type OverallPhase,
+  type SceneProgressItem,
+  type ScenePhase,
+} from "@/components/SceneProgressPanel";
 import { runWebImageAgent } from "@/agents/web-image-agent";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +57,10 @@ function StagePill({ status }: { status: AgentStageStatus }) {
       {status.replace("_", " ")}
     </span>
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export function ProducePage() {
@@ -85,7 +96,21 @@ export function ProducePage() {
   const [facePerformance, setFacePerformance] = useState(true);
   const [dualScreen, setDualScreen] = useState(true);
   const [use3dAvatar, setUse3dAvatar] = useState(false);
+
+  // Scene progress UI state (ReelShorts-style)
+  const [overallPhase, setOverallPhase] = useState<OverallPhase>("idle");
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [sceneProgress, setSceneProgress] = useState<SceneProgressItem[]>([]);
+  const [activeSceneIndex, setActiveSceneIndex] = useState<number | undefined>(undefined);
+
   const catalog = getAgentCatalog();
+
+  // Keep progress list in sync when scenes change externally (not during live run)
+  useEffect(() => {
+    if (!movie || running || playingCinema || exporting) return;
+    if (overallPhase === "ready" || overallPhase === "scenes" || overallPhase === "stitching") return;
+    setSceneProgress(scenesToProgressItems(movie.scenes));
+  }, [movie?.scenes, movie?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!movie) {
     return (
@@ -94,6 +119,15 @@ export function ProducePage() {
         <Link to="/" className="mt-4 inline-block text-accent">Back home</Link>
       </main>
     );
+  }
+
+  function patchScenePhase(index: number, phase: ScenePhase, detail?: string) {
+    setSceneProgress((prev) =>
+      prev.map((s, i) =>
+        i === index ? { ...s, phase, detail: detail ?? s.detail } : s,
+      ),
+    );
+    setActiveSceneIndex(index);
   }
 
   function buildPlayerScenes(): PlayerScene[] {
@@ -110,6 +144,13 @@ export function ProducePage() {
       const dataUrl = await readImageAsDataUrl(file);
       updateScene(movieId, sceneId, slot === "top" ? { imageTopLocal: dataUrl } : { imageBottomLocal: dataUrl });
       setRecordStatus(`Scene art updated (${slot} panel).`);
+      setSceneProgress((prev) =>
+        prev.map((s) =>
+          s.id === sceneId
+            ? { ...s, thumb: slot === "top" ? dataUrl : s.thumb, phase: s.phase === "pending" ? "done" : s.phase }
+            : s,
+        ),
+      );
     } catch {
       setRecordStatus("Could not read image.");
     }
@@ -122,7 +163,31 @@ export function ProducePage() {
     stopScenePlayer();
     stopRef.current.stopped = true;
     setCurrentLine(null);
+    setLastExport(null);
+
+    // Reset progress UI
+    setOverallPhase("story");
+    setProgressPercent(4);
+    setActiveSceneIndex(undefined);
+    const seed = scenesToProgressItems(movie.scenes).map((s) => ({
+      ...s,
+      phase: "queued" as ScenePhase,
+    }));
+    setSceneProgress(
+      seed.length
+        ? seed
+        : [
+            {
+              id: "tmp-0",
+              order: 0,
+              title: movie.language === "hi" ? "स्क्रिप्ट तैयार हो रही है" : "Generating script",
+              phase: "queued",
+            },
+          ],
+    );
+
     if (workerUrl) localStorage.setItem("bharat_video_worker_url", workerUrl.trim());
+
     const result = await runMoviePipeline(
       {
         movieId, title: movie.title, synopsis: movie.synopsis || "", language: movie.language,
@@ -138,19 +203,63 @@ export function ProducePage() {
       {
         onStage: (stage, status, msg) => {
           setPipeline((p) => ({ ...p, [stage]: status, lastMessage: msg, updatedAt: new Date().toISOString() }));
+          if (stage === "script" && status === "running") {
+            setOverallPhase("story");
+            setProgressPercent(10);
+          }
+          if (stage === "voice" && status === "running") {
+            setOverallPhase("scenes");
+            setProgressPercent((p) => Math.max(p, 25));
+          }
+          if (stage === "video" && status === "running") {
+            setOverallPhase("scenes");
+            setProgressPercent((p) => Math.max(p, 40));
+          }
         },
         onNarrationLine: (line) => setCurrentLine(line),
       },
     );
     setPipeline(result.pipeline);
+
     if (result.script) {
       applyScriptResult(movieId, result.script, { replaceCast: true, replaceScenes: true });
+      setProgressPercent(35);
+      setOverallPhase("scenes");
+
+      // Rebuild progress from new scenes
+      const afterScript = useMovieStore.getState().movies.find((m) => m.id === movieId);
+      const freshScenes = (afterScript?.scenes || []).slice().sort((a, b) => a.order - b.order);
+      setSceneProgress(
+        freshScenes.map((s) => ({
+          id: s.id,
+          order: s.order,
+          title: s.title,
+          mood: s.mood,
+          phase: "queued" as ScenePhase,
+          detail: undefined,
+        })),
+      );
+
+      // Simulate per-scene voice → image pipeline (ReelShorts style)
       try {
         setRecordStatus(
           movie.language === "hi"
-            ? "Cinematic art joḍi ja rahi hai…"
+            ? "Cinematic art जोड़ी जा रही है…"
             : "Adding cinematic scene art…",
         );
+
+        const n = Math.max(freshScenes.length, 1);
+        for (let i = 0; i < freshScenes.length; i++) {
+          if (stopRef.current.stopped) break;
+          patchScenePhase(i, doVoice ? "voice" : "image");
+          setProgressPercent(35 + Math.round((i / n) * 40));
+          await sleep(180);
+          if (doVoice) {
+            patchScenePhase(i, "image");
+            await sleep(120);
+          }
+        }
+
         const fills = await runWebImageAgent({
           title: result.script.title || movie.title,
           language: movie.language,
@@ -167,6 +276,7 @@ export function ProducePage() {
           })),
           onProgress: (msg) => setRecordStatus(msg),
         });
+
         const updated = useMovieStore.getState().movies.find((m) => m.id === movieId);
         const sorted = (updated?.scenes || []).slice().sort((a, b) => a.order - b.order);
         fills.fills.forEach((f, i) => {
@@ -179,22 +289,48 @@ export function ProducePage() {
             updateScene(movieId, sc.id, patch);
           }
         });
+
+        // Mark done + attach thumbs
+        setSceneProgress((prev) =>
+          prev.map((s, i) => {
+            const fill = fills.fills[i];
+            return {
+              ...s,
+              phase: "done" as ScenePhase,
+              thumb: fill?.imageTop || s.thumb,
+              detail: fill?.source || s.detail,
+            };
+          }),
+        );
         setRecordStatus(fills.summary);
       } catch {
         setRecordStatus(
           movie.language === "hi"
-            ? "Auto-art partial — B button try karein"
+            ? "Auto-art partial — B button try करें"
             : "Auto-art partial — try B button",
         );
+        setSceneProgress((prev) =>
+          prev.map((s) => ({ ...s, phase: "done" as ScenePhase })),
+        );
       }
+
       if (!headline) {
         setHeadline(result.script.logline?.slice(0, 80) || movie.title);
       }
     }
+
     if (result.storyboard?.length) {
       setStoryboard(result.storyboard);
       setFrameIndex(0);
     }
+
+    // Stitch phase
+    setOverallPhase("stitching");
+    setProgressPercent(88);
+    setActiveSceneIndex(undefined);
+    await sleep(400);
+    setProgressPercent(100);
+    setOverallPhase("ready");
     setRunning(false);
     setCurrentLine(null);
   }
@@ -208,6 +344,11 @@ export function ProducePage() {
     setExporting(false);
     setRunning(false);
     setCurrentLine(null);
+    if (overallPhase !== "ready") {
+      setOverallPhase("idle");
+      setProgressPercent(0);
+      setActiveSceneIndex(undefined);
+    }
   }
 
   function playStoryboard() {
@@ -236,6 +377,14 @@ export function ProducePage() {
     setCinemaCaption("");
     setRecordStatus(record ? "Recording…" : "Playing…");
     setLastExport(null);
+
+    // Progress: stitching / playing scenes
+    setOverallPhase("stitching");
+    setProgressPercent(5);
+    if (sceneProgress.length === 0) {
+      setSceneProgress(scenesToProgressItems(movie.scenes));
+    }
+
     const hl = headline.trim() || movie.title;
     try {
       const result = await playScenesOnCanvas(
@@ -254,7 +403,13 @@ export function ProducePage() {
           use3dAvatar,
           bodyPerformance: true,
           onCaption: (cap) => setCinemaCaption(cap),
-          onScene: (i) => setFrameIndex(i),
+          onScene: (i) => {
+            setFrameIndex(i);
+            setActiveSceneIndex(i);
+            patchScenePhase(i, "stitch");
+            const n = Math.max(playerScenes.length, 1);
+            setProgressPercent(Math.min(95, Math.round(((i + 1) / n) * 90)));
+          },
           onRecordProgress: (msg) => setRecordStatus(msg),
         },
         stopRef.current,
@@ -267,8 +422,14 @@ export function ProducePage() {
         downloadBlob(result.blob, name);
       } else if (record) setRecordStatus("Recording failed — try Chrome/Firefox.");
       else setRecordStatus("Playback finished.");
+
+      setSceneProgress((prev) => prev.map((s) => ({ ...s, phase: "done" as ScenePhase })));
+      setProgressPercent(100);
+      setOverallPhase("ready");
+      setActiveSceneIndex(undefined);
     } catch (e) {
       setRecordStatus(e instanceof Error ? e.message : "Playback/export failed");
+      setOverallPhase("failed");
     } finally {
       setPlayingCinema(false);
       setExporting(false);
@@ -303,6 +464,17 @@ export function ProducePage() {
           cinematic art search · import external AI frames per scene.
         </p>
       </div>
+
+      {/* ReelShorts-style scene progress */}
+      <SceneProgressPanel
+        language={movie.language}
+        overallPhase={overallPhase}
+        percent={progressPercent}
+        headline={headline || movie.title}
+        scenes={sceneProgress}
+        activeSceneIndex={activeSceneIndex}
+        className="mb-5"
+      />
 
       <section className="mb-4 space-y-2">
         {([{ key: "script" as const, label: "1. Script Agent", icon: Sparkles },
@@ -407,6 +579,11 @@ export function ProducePage() {
             externalImageLocal: dataUrl,
             imageTopLocal: dataUrl,
           });
+          setSceneProgress((prev) =>
+            prev.map((s) =>
+              s.id === sceneId ? { ...s, thumb: dataUrl, phase: "done" as ScenePhase } : s,
+            ),
+          );
         }}
         onApplyImages={(fills) => {
           if (!movieId) return;
@@ -416,12 +593,30 @@ export function ProducePage() {
             if (f.imageBottom) patch.imageBottomLocal = f.imageBottom;
             if (patch.imageTopLocal || patch.imageBottomLocal) updateScene(movieId, f.sceneId, patch);
           }
+          setSceneProgress((prev) =>
+            prev.map((s) => {
+              const fill = fills.find((x) => x.sceneId === s.id);
+              if (!fill) return s;
+              return {
+                ...s,
+                thumb: fill.imageTop || s.thumb,
+                phase: "done" as ScenePhase,
+              };
+            }),
+          );
         }}
         onPickImage={(sceneId, slot, imageDataOrUrl) => {
           if (!movieId) return;
           updateScene(movieId, sceneId, slot === "top"
             ? { imageTopLocal: imageDataOrUrl }
             : { imageBottomLocal: imageDataOrUrl });
+          if (slot === "top") {
+            setSceneProgress((prev) =>
+              prev.map((s) =>
+                s.id === sceneId ? { ...s, thumb: imageDataOrUrl } : s,
+              ),
+            );
+          }
         }}
         movie={{
           title: movie.title,
