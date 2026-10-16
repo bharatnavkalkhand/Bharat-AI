@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { runMoviePipeline, getAgentCatalog } from "@/agents/orchestrator";
-import { stopVoice, type NarrationLine } from "@/agents/voice-agent";
+import { stopVoice } from "@/agents/voice-agent";
 import type { StoryboardFrame } from "@/agents/video-agent";
 import type { AgentStageStatus, PipelineState } from "@/agents/types";
 import {
@@ -330,7 +330,6 @@ export function ProducePage() {
     setProgressPercent(100);
     setOverallPhase("ready");
     setRunning(false);
-    setCurrentLine(null);
   }
 
   function stopAll() {
@@ -341,7 +340,6 @@ export function ProducePage() {
     setPlayingCinema(false);
     setExporting(false);
     setRunning(false);
-    setCurrentLine(null);
     if (overallPhase !== "ready") {
       setOverallPhase("idle");
       setProgressPercent(0);
