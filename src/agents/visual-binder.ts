@@ -15,17 +15,30 @@ export function bindScenesForPlayer(
     .filter(Boolean) as string[];
 
   return sorted.map((sc, i) => {
+    const assigned = sc.characterIds
+      .map((id) => characters.find((character) => character.id === id))
+      .filter((character): character is Character => Boolean(character));
+    const assignedFaces = assigned
+      .map((character) => character.referenceImageLocal || character.referenceImageUrl)
+      .filter(Boolean) as string[];
+    const availableFaces = assignedFaces.length ? assignedFaces : faces;
     const top =
       sc.externalImageLocal ||
       sc.imageTopLocal ||
-      faces[i % Math.max(faces.length, 1)] ||
-      faces[0];
+      availableFaces[i % Math.max(availableFaces.length, 1)] ||
+      availableFaces[0];
     const bottom =
       sc.imageBottomLocal ||
       sc.externalImageLocal ||
-      faces[(i + 1) % Math.max(faces.length, 1)] ||
-      faces[0] ||
+      availableFaces[(i + 1) % Math.max(availableFaces.length, 1)] ||
+      availableFaces[0] ||
       top;
+    const characterPrompt = assigned
+      .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
+      .join("; ");
+    const visualPrompt = [sc.visualPrompt, characterPrompt ? `Consistent selected characters: ${characterPrompt}` : ""]
+      .filter(Boolean)
+      .join(". ");
 
     return {
       id: sc.id,
@@ -33,7 +46,7 @@ export function bindScenesForPlayer(
       mood: sc.mood,
       dialogue: sc.dialogue,
       narration: sc.narration,
-      visualPrompt: sc.visualPrompt,
+      visualPrompt,
       imageTop: top,
       imageBottom: bottom !== top ? bottom : sc.imageBottomLocal || top,
     };
