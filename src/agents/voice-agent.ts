@@ -57,6 +57,7 @@ export function buildNarrationPlan(input: AgentRunInput): NarrationLine[] {
 function pickVoice(
   speaker: string,
   language: "en" | "hi",
+  gender: "auto" | "male" | "female" = "auto",
 ): SpeechSynthesisVoice | null {
   if (!("speechSynthesis" in window)) return null;
   const voices = window.speechSynthesis.getVoices();
@@ -66,17 +67,22 @@ function pickVoice(
   );
   const pool = ranked.length ? ranked : voices;
   if (!pool.length) return null;
+  const genderMatches = pool.filter((v) => gender === "auto" || (gender === "female"
+    ? /female|woman|zira|susan|aria|jenny|samantha|karen|moira|tessa|veena|lekha/i.test(v.name)
+    : /male|man|david|mark|guy|daniel|james|george|rishi|hemant/i.test(v.name)));
+  const selectedPool = genderMatches.length ? genderMatches : pool;
 
   // Heuristic: different speakers get different voices
   let hash = 0;
   for (let i = 0; i < speaker.length; i++)
-    hash = (hash + speaker.charCodeAt(i) * (i + 1)) % pool.length;
-  return pool[hash] ?? pool[0];
+    hash = (hash + speaker.charCodeAt(i) * (i + 1)) % selectedPool.length;
+  return selectedPool[hash] ?? selectedPool[0];
 }
 
 export function speakLine(
   line: NarrationLine,
   language: "en" | "hi",
+  inputVoiceGender: "auto" | "male" | "female" = "auto",
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!("speechSynthesis" in window)) {
@@ -86,7 +92,7 @@ export function speakLine(
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(line.text);
     u.lang = language === "hi" ? "hi-IN" : "en-IN";
-    const voice = pickVoice(line.speaker, language);
+    const voice = pickVoice(line.speaker, language, inputVoiceGender);
     if (voice) u.voice = voice;
 
     // Light character differentiation (not real voice clone)
@@ -132,7 +138,7 @@ export async function runVoiceAgent(
 
   for (let i = 0; i < plan.length; i++) {
     onLine?.(plan[i], i, plan.length);
-    await speakLine(plan[i], input.language);
+    await speakLine(plan[i], input.language, input.options?.voiceGender ?? "auto");
     await new Promise((r) => setTimeout(r, 220));
   }
 
