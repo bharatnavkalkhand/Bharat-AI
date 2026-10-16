@@ -90,6 +90,7 @@ export function ProducePage() {
   );
   const [doScript, setDoScript] = useState(true);
   const [doVoice, setDoVoice] = useState(false);
+  const [voiceGender, setVoiceGender] = useState<"auto" | "male" | "female">("auto");
   const [doVideo, setDoVideo] = useState(true);
   const [headline, setHeadline] = useState("");
   const [motionIntensity, setMotionIntensity] = useState<MotionIntensity>("high");
@@ -196,7 +197,7 @@ export function ProducePage() {
           narration: s.narration, gestureNotes: s.gestureNotes, visualPrompt: s.visualPrompt,
         })),
         characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role })),
-        options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined },
+        options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined, voiceGender },
       },
       { script: doScript, voice: doVoice, video: doVideo },
       {
@@ -396,6 +397,7 @@ export function ProducePage() {
           height: record ? 676 : 450,
           record,
           embedAudio: true,
+          voiceGender,
           motionIntensity,
           facePerformance: facePerformance || use3dAvatar,
           layout: dualScreen ? "dual" : "single",
@@ -526,6 +528,16 @@ export function ProducePage() {
         </label>
       </div>
 
+      <section className="mb-4 card-pro space-y-2 p-3">
+        <label className="block text-xs font-semibold" htmlFor="voice-gender">Voice type</label>
+        <select id="voice-gender" value={voiceGender} onChange={(e) => setVoiceGender(e.target.value as "auto" | "male" | "female")} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm">
+          <option value="auto">Auto / device default</option>
+          <option value="male">Male voice</option>
+          <option value="female">Female voice</option>
+        </select>
+        <p className="text-[11px] leading-relaxed text-muted">Uses male/female voices available on this device and language. Availability depends on your browser; this is not voice cloning.</p>
+      </section>
+
       <div className="mb-4 flex gap-2">
         <button type="button" disabled={busy} onClick={runPipeline}
           className="btn-primary flex flex-1 items-center justify-center gap-2 px-4 py-3.5 text-sm disabled:opacity-50 disabled:shadow-none">
@@ -543,6 +555,25 @@ export function ProducePage() {
             {sortedScenes.slice(0, 8).map((sc, idx) => (
               <li key={sc.id} className="card-pro p-3">
                 <p className="mb-2 text-xs font-medium">{idx + 1}. {sc.title} <span className="text-muted">({sc.mood})</span></p>
+                {movie.characters.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-border/70 p-2">
+                    <p className="mb-1.5 text-[10px] font-semibold text-muted">Scene characters (auto-selected; edit if needed)</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                      {movie.characters.map((character) => {
+                        const selected = sc.characterIds.includes(character.id);
+                        return <label key={character.id} className="flex items-center gap-1 text-[11px]">
+                          <input type="checkbox" checked={selected} onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...new Set([...sc.characterIds, character.id])]
+                              : sc.characterIds.filter((id) => id !== character.id);
+                            updateScene(movie.id, sc.id, { characterIds: next });
+                          }} />
+                          {character.name}
+                        </label>;
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => {
                     const src =
