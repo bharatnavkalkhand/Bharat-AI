@@ -45,6 +45,7 @@ export interface AgentRunInput {
   options?: {
     useCloudLlm?: boolean;
     workerUrl?: string;
+    voiceGender?: "auto" | "male" | "female";
   };
 }
 
