@@ -8,8 +8,11 @@ import torch
 from diffusers import AutoencoderKLWan, WanPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video
+from huggingface_hub import snapshot_download
 
 MODEL_ID = os.getenv("MODEL_ID", "Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
+# Download weights at Space startup, before a user's limited GPU quota is reserved.
+MODEL_PATH = snapshot_download(repo_id=MODEL_ID)
 NEGATIVE_PROMPT = (
     "low quality, blurry, static image, distorted anatomy, extra limbs, "
     "text, subtitles, watermark, flicker, abrupt camera movement"
@@ -25,14 +28,16 @@ def get_pipeline() -> WanPipeline:
     global pipe
     if pipe is None:
         vae = AutoencoderKLWan.from_pretrained(
-            MODEL_ID,
+            MODEL_PATH,
             subfolder="vae",
             torch_dtype=torch.float32,
+            local_files_only=True,
         )
         loaded = WanPipeline.from_pretrained(
-            MODEL_ID,
+            MODEL_PATH,
             vae=vae,
             torch_dtype=torch.bfloat16,
+            local_files_only=True,
         )
         loaded.scheduler = UniPCMultistepScheduler.from_config(
             loaded.scheduler.config,
@@ -43,7 +48,7 @@ def get_pipeline() -> WanPipeline:
     return pipe
 
 
-@spaces.GPU(duration=240)
+@spaces.GPU(duration=60)
 def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
     prompt = (prompt or "").strip()
     if not prompt:
@@ -60,8 +65,9 @@ def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
             height=480,
             width=832,
             num_frames=int(num_frames),
-            num_inference_steps=16,
-            guidance_scale=5.0,
+            # Free-tier ZeroGPU calls are capped at 60 GPU seconds.
+            num_inference_steps=6 if num_frames == 17 else 8 if num_frames == 33 else 10,
+            guidance_scale=4.5,
             generator=generator,
         ).frames[0]
 
@@ -83,7 +89,8 @@ with gr.Blocks(title="Bharat AI Video Worker") as demo:
     gr.Markdown(
         "# Bharat AI Video Worker\n"
         "Generate short, silent 16:9 scene clips. Audio is added in a separate stage. "
-        "The model loads on the first GPU request, not at app startup."
+        "Model weights are downloaded at startup; GPU is reserved only during generation. "
+        "Free-tier requests are capped at 60 GPU seconds and daily quota is limited."
     )
     prompt = gr.Textbox(
         label="Scene prompt",
