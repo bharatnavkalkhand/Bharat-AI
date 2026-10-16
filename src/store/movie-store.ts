@@ -251,23 +251,33 @@ export const useMovieStore = create<MovieState>()(
                 }))
               : m.characters;
 
-            // Phase 5: continuity — every scene links to full cast
+            // Auto-cast each scene from explicit "Character: dialogue" speaker names.
+            // If the scene has no recognizable speaker tag, retain the full cast as a safe fallback.
             const allCastIds = characters.map((c) => c.id);
 
             const scenes: Scene[] = replaceScenes
-              ? result.scenes.map((sc, order) => ({
-                  id: uid(),
-                  order,
-                  title: sc.title,
-                  mood: sc.mood,
-                  dialogue: sc.dialogue,
-                  gestureNotes: sc.gestureNotes,
-                  visualPrompt: sc.visualPrompt,
-                  narration: sc.narration,
-                  estimatedDurationSec: sc.estimatedDurationSec,
-                  status: "draft" as const,
-                  characterIds: allCastIds,
-                }))
+              ? result.scenes.map((sc, order) => {
+                  const speakerNames = (sc.dialogue || "")
+                    .split(/\\n+/)
+                    .map((line) => line.match(/^([^:]{1,40}):\\s*.+$/)?.[1]?.trim().toLocaleLowerCase())
+                    .filter((name): name is string => Boolean(name));
+                  const matchedIds = characters
+                    .filter((character) => speakerNames.includes(character.name.toLocaleLowerCase()))
+                    .map((character) => character.id);
+                  return {
+                    id: uid(),
+                    order,
+                    title: sc.title,
+                    mood: sc.mood,
+                    dialogue: sc.dialogue,
+                    gestureNotes: sc.gestureNotes,
+                    visualPrompt: sc.visualPrompt,
+                    narration: sc.narration,
+                    estimatedDurationSec: sc.estimatedDurationSec,
+                    status: "draft" as const,
+                    characterIds: matchedIds.length ? matchedIds : allCastIds,
+                  };
+                })
               : m.scenes;
             return {
               ...m,
