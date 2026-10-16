@@ -195,8 +195,9 @@ export function ProducePage() {
         scenes: movie.scenes.map((s) => ({
           id: s.id, order: s.order, title: s.title, mood: s.mood, dialogue: s.dialogue,
           narration: s.narration, gestureNotes: s.gestureNotes, visualPrompt: s.visualPrompt,
+          characterIds: s.characterIds,
         })),
-        characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role })),
+        characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role, appearance: c.appearance })),
         options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined, voiceGender },
       },
       { script: doScript, voice: doVoice, video: doVideo },
