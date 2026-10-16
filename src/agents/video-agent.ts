@@ -111,10 +111,10 @@ export async function runVideoAgent(
 
     return {
       agentId: "video",
-      status: "succeeded",
-      message: `Storyboard preview ready, but real GPU generation failed: ${generated.error}. Check that the HF Space is running and its free GPU quota is available.`,
+      status: "failed",
+      message: `Real AI video generation failed: ${generated.error}. No MP4 was produced. Check the Hugging Face Space URL, its build/runtime logs, and free GPU availability.`,
       outputText: board
-        .map((f, i) => `Frame ${i + 1}: ${f.title} [${f.mood}] ${f.durationSec}s — ${f.visualPrompt}`)
+        .map((f, i) => `Storyboard only — frame ${i + 1}: ${f.title} [${f.mood}] ${f.durationSec}s — ${f.visualPrompt}`)
         .join("\n"),
       data: { board, mode: "storyboard", workerError: generated.error },
       durationMs: performance.now() - t0,
