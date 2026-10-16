@@ -77,6 +77,7 @@ export function ProducePage() {
   });
   const [running, setRunning] = useState(false);
   const [storyboard, setStoryboard] = useState<StoryboardFrame[]>([]);
+  const [generatedClipUrl, setGeneratedClipUrl] = useState("");
   const [frameIndex, setFrameIndex] = useState(0);
   const [playingBoard, setPlayingBoard] = useState(false);
   const [playingCinema, setPlayingCinema] = useState(false);
@@ -218,6 +219,8 @@ export function ProducePage() {
       },
     );
     setPipeline(result.pipeline);
+    const clipUrl = result.video?.data?.clipUrl;
+    setGeneratedClipUrl(typeof clipUrl === "string" && /^https:\/\//i.test(clipUrl) ? clipUrl : "");
 
     if (result.script) {
       applyScriptResult(movieId, result.script, { replaceCast: true, replaceScenes: true });
@@ -486,6 +489,30 @@ export function ProducePage() {
         ))}
         <p className="px-1 text-xs text-muted">{pipeline.lastMessage}</p>
       </section>
+
+      {generatedClipUrl && (
+        <section className="mb-5 card-pro space-y-3 p-3">
+          <div>
+            <h2 className="text-sm font-semibold">Generated AI video clip</h2>
+            <p className="text-xs text-muted">Short silent test clip from your configured Hugging Face worker.</p>
+          </div>
+          <video
+            className="w-full rounded-xl bg-black"
+            src={generatedClipUrl}
+            controls
+            playsInline
+            preload="metadata"
+          />
+          <a
+            className="btn-primary inline-flex items-center gap-2 px-3 py-2 text-xs"
+            href={generatedClipUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Download className="h-3.5 w-3.5" /> Open / save generated clip
+          </a>
+        </section>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-3 text-xs">
         <label className="flex items-center gap-1.5">
