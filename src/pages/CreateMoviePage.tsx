@@ -8,6 +8,7 @@ import {
   Users,
   Clapperboard,
   Loader2,
+  Zap,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { generateScript } from "@/lib/script-engine";
@@ -100,31 +101,37 @@ export function CreateMoviePage() {
   const ui = language;
 
   return (
-    <main className="mx-auto max-w-lg px-4 pb-24 pt-6 sm:max-w-2xl">
-      <header className="mb-6 flex items-center gap-3">
+    <main className="page-shell mx-auto min-h-dvh max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
+      <header className="mb-7 flex items-start gap-3">
         <Link
           to="/"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-muted transition hover:bg-card"
+          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-muted transition hover:border-accent/40 hover:text-fg"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div>
-          <h1 className="text-xl font-semibold">{t(ui, "newMovie")}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight">{t(ui, "newMovie")}</h1>
           <p className="text-sm text-muted">{t(ui, "newMovieSub")}</p>
         </div>
       </header>
 
-      {/* Phase 5 templates */}
-      <section className="mb-6">
-        <h2 className="mb-2 text-sm font-medium">
-          {language === "hi" ? "भारत टेम्पलेट" : "Bharat templates"}
-        </h2>
+      {/* Templates */}
+      <section className="mb-7">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            {language === "hi" ? "भारत टेम्पलेट" : "Bharat templates"}
+          </h2>
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+            <Zap className="h-3 w-3" />
+            {language === "hi" ? "एक टैप" : "One tap"}
+          </span>
+        </div>
         <p className="mb-3 text-xs text-muted">
           {language === "hi"
             ? "तैयार कहानी चुनें — फिर वन-क्लिक प्रोड्यूस"
             : "Pick a ready story — then one-click produce"}
         </p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2.5">
           {BHARAT_TEMPLATES.map((tpl) => {
             const active = pickedTemplate === tpl.id;
             return (
@@ -133,16 +140,14 @@ export function CreateMoviePage() {
                 type="button"
                 onClick={() => applyTemplate(tpl)}
                 className={cn(
-                  "rounded-xl border px-3 py-2.5 text-left transition",
-                  active
-                    ? "border-accent bg-accent/10"
-                    : "border-border bg-card hover:border-accent/40",
+                  "card-pro px-3.5 py-3 text-left",
+                  active && "border-accent bg-accent/10 shadow-sm shadow-orange-500/10",
                 )}
               >
-                <p className="text-xs font-semibold leading-tight">
+                <p className="text-xs font-semibold leading-snug">
                   {language === "hi" ? tpl.titleHi : tpl.titleEn}
                 </p>
-                <p className="mt-1 text-[10px] text-muted">
+                <p className="mt-1.5 text-[10px] leading-snug text-muted">
                   {language === "hi" ? tpl.tagHi : tpl.tagEn}
                 </p>
               </button>
@@ -151,9 +156,11 @@ export function CreateMoviePage() {
         </div>
       </section>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div>
-          <label className="mb-2 block text-sm font-medium">{t(ui, "language")}</label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+            {t(ui, "language")}
+          </label>
           <div className="grid grid-cols-2 gap-2">
             {(
               [
@@ -169,7 +176,7 @@ export function CreateMoviePage() {
                   "rounded-xl border px-4 py-3 text-sm font-medium transition",
                   language === opt.id
                     ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-card text-muted hover:border-muted",
+                    : "border-border bg-card text-muted hover:border-border-strong",
                 )}
               >
                 {opt.label}
@@ -179,7 +186,9 @@ export function CreateMoviePage() {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-medium">{t(ui, "duration")}</label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+            {t(ui, "duration")}
+          </label>
           <div className="grid grid-cols-2 gap-2">
             {(
               [
@@ -195,7 +204,7 @@ export function CreateMoviePage() {
                   "rounded-xl border px-4 py-3 text-sm font-medium transition",
                   duration === opt.id
                     ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-card text-muted hover:border-muted",
+                    : "border-border bg-card text-muted hover:border-border-strong",
                 )}
               >
                 {opt.label}
@@ -205,7 +214,9 @@ export function CreateMoviePage() {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-medium">{t(ui, "styles")}</label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+            {t(ui, "styles")}
+          </label>
           <div className="grid grid-cols-2 gap-2">
             {GENRE_OPTIONS.map((opt) => {
               const Icon = opt.icon;
@@ -219,10 +230,10 @@ export function CreateMoviePage() {
                     "flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition",
                     active
                       ? "border-accent bg-accent/10 text-accent"
-                      : "border-border bg-card text-muted hover:border-muted",
+                      : "border-border bg-card text-muted hover:border-border-strong",
                   )}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0" />
                   {language === "hi" ? opt.labelHi : opt.labelEn}
                 </button>
               );
@@ -231,19 +242,23 @@ export function CreateMoviePage() {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-medium">{t(ui, "titleOpt")}</label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+            {t(ui, "titleOpt")}
+          </label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={language === "hi" ? "मेरी अवतार कहानी" : "My Avatar Story"}
             maxLength={120}
-            className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:border-accent"
+            className="w-full rounded-xl border border-border bg-card px-4 py-3.5 text-sm outline-none transition focus:border-accent"
           />
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-medium">{t(ui, "storyIdea")}</label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+            {t(ui, "storyIdea")}
+          </label>
           <textarea
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
@@ -254,7 +269,7 @@ export function CreateMoviePage() {
             }
             rows={6}
             maxLength={4000}
-            className="w-full resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm leading-relaxed outline-none focus:border-accent"
+            className="w-full resize-none rounded-xl border border-border bg-card px-4 py-3.5 text-sm leading-relaxed outline-none transition focus:border-accent"
           />
           <p className="mt-2 text-xs text-muted">{t(ui, "oneClickHint")}</p>
         </div>
@@ -264,10 +279,8 @@ export function CreateMoviePage() {
           disabled={!canCreate || busy !== "idle"}
           onClick={handleOneClick}
           className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-semibold text-white transition",
-            canCreate && busy === "idle"
-              ? "bg-accent hover:bg-accent-hover active:scale-[0.98]"
-              : "cursor-not-allowed bg-accent/40",
+            "btn-primary flex w-full items-center justify-center gap-2 px-6 py-4 text-base",
+            (!canCreate || busy !== "idle") && "cursor-not-allowed opacity-50 shadow-none",
           )}
         >
           {busy === "oneclick" ? (
@@ -288,9 +301,9 @@ export function CreateMoviePage() {
           disabled={!canCreate || busy !== "idle"}
           onClick={handleCreateOnly}
           className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3.5 text-sm font-medium transition",
+            "flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card px-6 py-3.5 text-sm font-medium transition",
             canCreate && busy === "idle"
-              ? "text-fg hover:border-accent"
+              ? "text-fg hover:border-accent/50"
               : "cursor-not-allowed text-muted",
           )}
         >
