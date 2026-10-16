@@ -76,7 +76,6 @@ export function ProducePage() {
     lastMessage: "Ready to produce", updatedAt: new Date().toISOString(),
   });
   const [running, setRunning] = useState(false);
-  const [currentLine, setCurrentLine] = useState<NarrationLine | null>(null);
   const [storyboard, setStoryboard] = useState<StoryboardFrame[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playingBoard, setPlayingBoard] = useState(false);
@@ -162,7 +161,6 @@ export function ProducePage() {
     stopVoice();
     stopScenePlayer();
     stopRef.current.stopped = true;
-    setCurrentLine(null);
     setLastExport(null);
 
     // Reset progress UI
@@ -216,7 +214,7 @@ export function ProducePage() {
             setProgressPercent((p) => Math.max(p, 40));
           }
         },
-        onNarrationLine: (line) => setCurrentLine(line),
+        onNarrationLine: () => undefined,
       },
     );
     setPipeline(result.pipeline);
