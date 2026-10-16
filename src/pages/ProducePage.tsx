@@ -89,7 +89,7 @@ export function ProducePage() {
 
   if (!movie) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-16 text-center">
+      <main className="page-shell mx-auto max-w-lg px-4 py-16 text-center">
         <p className="text-muted">Movie not found</p>
         <Link to="/" className="mt-4 inline-block text-accent">Back home</Link>
       </main>
@@ -285,22 +285,22 @@ export function ProducePage() {
   const sortedScenes = movie.scenes.slice().sort((a, b) => a.order - b.order);
 
   return (
-    <main className="mx-auto max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
+    <main className="page-shell mx-auto min-h-dvh max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
       <header className="mb-6 flex items-start gap-3">
-        <Link to={`/movie/${movie.id}`} className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-muted hover:bg-card">
+        <Link to={`/movie/${movie.id}`} className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-muted transition hover:border-accent/40 hover:text-fg">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-semibold">Produce Movie</h1>
+          <h1 className="truncate text-xl font-bold tracking-tight">Produce Movie</h1>
           <p className="text-sm text-muted">{movie.title}</p>
         </div>
       </header>
 
-      <div className="mb-4 flex gap-2 rounded-xl border border-border bg-card p-3 text-xs text-muted">
+      <div className="mb-5 flex gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3.5 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-        <p>
-          <strong className="text-fg">A+B+C active:</strong> free worker ·
-          cinematic art search · import ReelShorts frames per scene.
+        <p className="leading-relaxed">
+          <strong className="text-fg">Studio tools:</strong> free worker ·
+          cinematic art search · import external AI frames per scene.
         </p>
       </div>
 
@@ -309,7 +309,7 @@ export function ProducePage() {
           { key: "voice" as const, label: "2. Voice Agent", icon: Volume2 },
           { key: "video" as const, label: "3. Video Agent", icon: Clapperboard },
         ] as const).map((s) => (
-          <div key={s.key} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5">
+          <div key={s.key} className="card-pro flex items-center justify-between px-3.5 py-3">
             <div className="flex items-center gap-2 text-sm">
               <s.icon className="h-4 w-4 text-accent" />{s.label}
             </div>
@@ -333,20 +333,20 @@ export function ProducePage() {
 
       <div className="mb-4 flex gap-2">
         <button type="button" disabled={busy} onClick={runPipeline}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3.5 text-sm font-semibold text-white disabled:opacity-60">
+          className="btn-primary flex flex-1 items-center justify-center gap-2 px-4 py-3.5 text-sm disabled:opacity-50 disabled:shadow-none">
           {running ? <><Loader2 className="h-4 w-4 animate-spin" /> Running…</> : <><Bot className="h-4 w-4" /> Run production pipeline</>}
         </button>
-        <button type="button" onClick={stopAll} className="rounded-xl border border-border px-4 text-muted" aria-label="Stop">
+        <button type="button" onClick={stopAll} className="rounded-xl border border-border bg-card px-4 text-muted transition hover:border-accent/40" aria-label="Stop">
           <Square className="h-4 w-4" />
         </button>
       </div>
 
       {sortedScenes.length > 0 && (
         <section className="mb-6 space-y-2">
-          <h2 className="text-sm font-medium">Scene art {dualScreen ? "(dual)" : "(single)"}</h2>
+          <h2 className="text-sm font-semibold">Scene art {dualScreen ? "(dual)" : "(single)"}</h2>
           <ul className="space-y-2">
             {sortedScenes.slice(0, 8).map((sc, idx) => (
-              <li key={sc.id} className="rounded-xl border border-border bg-card p-3">
+              <li key={sc.id} className="card-pro p-3">
                 <p className="mb-2 text-xs font-medium">{idx + 1}. {sc.title} <span className="text-muted">({sc.mood})</span></p>
                 <div className="flex gap-2">
                   {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => {
@@ -376,8 +376,8 @@ export function ProducePage() {
         </section>
       )}
 
-      <section className="mb-4 rounded-xl border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-medium">Motion intensity</p>
+      <section className="mb-4 card-pro p-3">
+        <p className="mb-2 text-xs font-semibold">Motion intensity</p>
         <div className="flex gap-2">
           {(["low", "medium", "high"] as MotionIntensity[]).map((level) => (
             <button key={level} type="button" onClick={() => setMotionIntensity(level)}
@@ -434,9 +434,9 @@ export function ProducePage() {
         }}
       />
 
-      <section className="mb-6 rounded-2xl border border-border bg-card overflow-hidden">
+      <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card">
         <div className="border-b border-border px-3 py-2">
-          <p className="text-xs font-medium text-muted">
+          <p className="text-xs font-semibold text-muted">
             Cinematic · motion {motionIntensity}
           </p>
           <input value={headline} onChange={(e) => setHeadline(e.target.value)}
@@ -457,7 +457,7 @@ export function ProducePage() {
           </button>
           <button type="button" disabled={busy || (!movie.scenes.length && !storyboard.length)}
             onClick={() => runCinematic(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+            className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-40 disabled:shadow-none">
             {exporting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Exporting…</> : <><Download className="h-3.5 w-3.5" /> Export WebM/MP4</>}
           </button>
           {lastExport && (
@@ -473,16 +473,16 @@ export function ProducePage() {
       </section>
 
       {frame && (
-        <div className="mb-4 rounded-xl border border-border bg-card p-3 text-xs text-muted">
+        <div className="mb-4 card-pro p-3 text-xs text-muted">
           Active frame: {frame.title} · {frame.mood}
         </div>
       )}
 
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted">Agents</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">Agents</h2>
         <ul className="space-y-2">
           {catalog.map((a) => (
-            <li key={a.id} className="rounded-xl border border-border bg-card p-3">
+            <li key={a.id} className="card-pro p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">{a.name}</p>
                 <span className="text-[10px] text-muted">Q{a.qualityScore}/5</span>
