@@ -146,8 +146,8 @@ export async function runVideoAgent(
         const data = (await res.json()) as Record<string, unknown>;
         return {
           agentId: "video",
-          status: "succeeded",
-          message: "Video worker accepted job. Poll worker for MP4 when ready.",
+          status: "queued",
+          message: "Video worker accepted the job, but no MP4 has been returned yet. This stage remains queued until the worker exposes a completed clip.",
           data: { board, worker: data },
           durationMs: performance.now() - t0,
         };
