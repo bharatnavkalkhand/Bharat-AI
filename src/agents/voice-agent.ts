@@ -1,22 +1,22 @@
-import type { AgentRunInput, AgentRunResult } from "./types";
+import type { AgentResult, MovieProduceInput } from "./types";
 import {
-  resolveSystemVoice,
   characterVoiceIdForSpeaker,
+  resolveSystemVoice,
   type VoiceGender,
 } from "./voice-catalog";
 
-export interface NarrationLine {
+export interface SpokenLine {
   sceneId: string;
   sceneTitle: string;
   speaker: string;
   text: string;
-  mood: string;
+  durationSec: number;
 }
 
 /** Parse dialogue lines like "Name: text" into speaker turns */
-export function parseDialogueLines(
+export function parseDialogueTurns(
   dialogue: string,
-  fallbackSpeaker = "Narrator",
+  fallbackSpeaker = "Character",
 ): Array<{ speaker: string; text: string }> {
   const lines = dialogue
     .split(/\n+/)
@@ -31,9 +31,9 @@ export function parseDialogueLines(
   return out.length ? out : [{ speaker: fallbackSpeaker, text: dialogue }];
 }
 
-export function buildNarrationPlan(input: AgentRunInput): NarrationLine[] {
-  const plan: NarrationLine[] = [];
-  const scenes = [...input.scenes].sort((a, b) => a.order - b.order);
+export function buildSpeakPlan(input: MovieProduceInput): SpokenLine[] {
+  const plan: SpokenLine[] = [];
+  const scenes = (input.scenes || []).slice().sort((a, b) => a.order - b.order);
   for (const sc of scenes) {
     if (sc.narration?.trim()) {
       plan.push({
@@ -41,17 +41,17 @@ export function buildNarrationPlan(input: AgentRunInput): NarrationLine[] {
         sceneTitle: sc.title,
         speaker: "Narrator",
         text: sc.narration.trim(),
-        mood: sc.mood,
+        durationSec: Math.min(12, Math.max(2, sc.narration.trim().length / 14)),
       });
     }
     if (sc.dialogue?.trim()) {
-      for (const turn of parseDialogueLines(sc.dialogue)) {
+      for (const turn of parseDialogueTurns(sc.dialogue)) {
         plan.push({
           sceneId: sc.id,
           sceneTitle: sc.title,
           speaker: turn.speaker,
           text: turn.text,
-          mood: sc.mood,
+          durationSec: Math.min(10, Math.max(1.5, turn.text.length / 14)),
         });
       }
     }
@@ -61,108 +61,116 @@ export function buildNarrationPlan(input: AgentRunInput): NarrationLine[] {
 
 export interface SpeakOptions {
   language: "en" | "hi";
-  /** auto | male | female — coarse filter */
   voiceGender?: "auto" | VoiceGender;
-  /** Explicit catalog id for narrator lines */
   narratorVoiceId?: string;
-  /** Explicit catalog id for character lines (or per-speaker map later) */
   characterVoiceId?: string;
 }
 
 export function speakLine(
-  line: NarrationLine,
+  line: SpokenLine,
   opts: SpeakOptions,
 ): Promise<void> {
   return new Promise((resolve) => {
-    if (!("speechSynthesis" in window)) {
+    if (!("speechSynthesis" in window) || !line.text.trim()) {
       resolve();
       return;
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(line.text);
     u.lang = opts.language === "hi" ? "hi-IN" : "en-IN";
-
     const isNarrator = /narrat|कथा|वाचक/i.test(line.speaker);
     const gender: VoiceGender | undefined =
       opts.voiceGender === "male" || opts.voiceGender === "female"
         ? opts.voiceGender
         : undefined;
-
     const optionId = isNarrator
       ? opts.narratorVoiceId ||
         (gender === "female" ? "nar-f1" : "nar-m1")
       : opts.characterVoiceId ||
         characterVoiceIdForSpeaker(line.speaker, gender);
-
     const resolved = resolveSystemVoice(
       optionId,
       opts.language,
       gender || (isNarrator ? "male" : "male"),
     );
     if (resolved.voice) u.voice = resolved.voice;
-    u.pitch = resolved.pitch;
-    u.rate = resolved.rate;
-
+    if (gender === "female") {
+      u.pitch = Math.max(resolved.pitch, 1.15);
+      u.rate = resolved.rate;
+    } else if (gender === "male") {
+      u.pitch = Math.min(resolved.pitch, 0.9);
+      u.rate = resolved.rate;
+    } else {
+      u.pitch = resolved.pitch;
+      u.rate = resolved.rate;
+    }
     u.onend = () => resolve();
     u.onerror = () => resolve();
     window.speechSynthesis.speak(u);
+    window.setTimeout(resolve, Math.min(20000, 800 + line.text.length * 80));
   });
 }
 
-export async function runVoiceAgent(
-  input: AgentRunInput,
-  onLine?: (line: NarrationLine, index: number, total: number) => void,
-): Promise<AgentRunResult> {
-  const t0 = performance.now();
-  const plan = buildNarrationPlan(input);
+export function stopVoice() {
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+}
 
+export async function runVoiceAgent(
+  input: MovieProduceInput,
+): Promise<AgentResult> {
+  const plan = buildSpeakPlan(input);
   if (!plan.length) {
     return {
-      agentId: "voice",
-      status: "failed",
+      stage: "voice",
+      status: "skipped",
       message: "No dialogue or narration to speak. Generate a script first.",
-      durationMs: performance.now() - t0,
+      data: { lines: [] },
     };
   }
 
   if (!("speechSynthesis" in window)) {
     return {
-      agentId: "voice",
+      stage: "voice",
       status: "needs_upgrade",
-      message:
-        "Browser TTS unavailable. Upgrade path: self-host Piper/Coqui XTTS for real character voices.",
-      data: { plan },
-      durationMs: performance.now() - t0,
+      message: "Browser has no speechSynthesis — use device with TTS support.",
+      data: { lines: plan },
     };
   }
 
-  window.speechSynthesis.getVoices();
+  await new Promise<void>((resolve) => {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length) {
+      resolve();
+      return;
+    }
+    const done = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      resolve();
+    };
+    window.speechSynthesis.onvoiceschanged = done;
+    window.setTimeout(done, 700);
+  });
 
   const speakOpts: SpeakOptions = {
     language: input.language,
     voiceGender: input.options?.voiceGender ?? "auto",
-    narratorVoiceId: input.options?.narratorVoiceId as string | undefined,
-    characterVoiceId: input.options?.characterVoiceId as string | undefined,
   };
 
-  for (let i = 0; i < plan.length; i++) {
-    onLine?.(plan[i], i, plan.length);
-    await speakLine(plan[i], speakOpts);
-    await new Promise((r) => setTimeout(r, 220));
+  // Speak a short sample of first 3 lines so pipeline proves voice works
+  const sample = plan.slice(0, 3);
+  for (let i = 0; i < sample.length; i++) {
+    await speakLine(sample[i], speakOpts);
   }
 
   return {
-    agentId: "voice",
+    stage: "voice",
     status: "succeeded",
-    message: `Narrated ${plan.length} lines (catalog voices — free browser TTS).`,
-    outputText: plan
-      .map((l) => `[${l.sceneTitle}] ${l.speaker}: ${l.text}`)
-      .join("\n"),
-    data: { plan, engine: "web-speech-catalog" },
-    durationMs: performance.now() - t0,
+    message: `Voice ready (${plan.length} lines). Gender=${speakOpts.voiceGender}. Full audio plays on Play/Export.`,
+    data: {
+      lines: plan,
+      preview: sample
+        .map((l) => `[${l.sceneTitle}] ${l.speaker}: ${l.text}`)
+        .join("\n"),
+    },
   };
-}
-
-export function stopVoice() {
-  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 }
