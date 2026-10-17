@@ -499,66 +499,41 @@ export function ProducePage() {
             <h2 className="text-sm font-semibold">Generated AI video clip</h2>
             <p className="text-xs text-muted">Short silent test clip from worker</p>
           </div>
-          <video src={generatedClipUrl} controls playsInline className="w-full rounded-lg bg-black" />
+          <video src={generatedClipUrl} controls playsInline className="w-full rounded-xl bg-black" />
         </section>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-3 text-xs">
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={doScript} onChange={(e) => setDoScript(e.target.checked)} /> Script
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={doVoice} onChange={(e) => setDoVoice(e.target.checked)} /> Voice
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={doVideo} onChange={(e) => setDoVideo(e.target.checked)} /> Video
-        </label>
-      </div>
-
-      <div className="mb-4 flex gap-2">
-        <button type="button" disabled={busy} onClick={runPipeline}
-          className="btn-primary flex flex-1 items-center justify-center gap-2 px-4 py-3.5 text-sm disabled:opacity-50 disabled:shadow-none">
-          {running ? <><Loader2 className="h-4 w-4 animate-spin" /> Running…</> : <><Bot className="h-4 w-4" /> Run production pipeline</>}
-        </button>
-        <button type="button" onClick={stopAll} className="rounded-xl border border-border bg-card px-4 text-muted transition hover:border-accent/40" aria-label="Stop">
-          <Square className="h-4 w-4" />
-        </button>
-      </div>
-
-      {sortedScenes.length > 0 && (
-        <section className="mb-6 space-y-2">
-          <h2 className="text-sm font-semibold">Scene art {dualScreen ? "(dual)" : "(single)"}</h2>
-          <ul className="space-y-2">
-            {sortedScenes.slice(0, 8).map((sc, idx) => (
-              <li key={sc.id} className="card-pro p-3">
-                <p className="mb-2 text-xs font-medium">{idx + 1}. {sc.title} <span className="text-muted">({sc.mood})</span></p>
-                <div className="flex gap-2">
-                  {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => {
-                    const src =
-                      slot === "top"
-                        ? sc.externalImageLocal || sc.imageTopLocal
-                        : sc.imageBottomLocal;
-                    return (
-                      <div key={slot} className="flex-1">
-                        <div className="mb-1 aspect-video overflow-hidden rounded-lg border border-border bg-bg">
-                          {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : (
-                            <div className="flex h-full items-center justify-center text-[10px] text-muted">{slot}</div>
-                          )}
-                        </div>
-                        <label className="flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[10px] text-accent">
-                          <ImagePlus className="h-3 w-3" /> {slot}
-                          <input type="file" accept="image/*" className="hidden"
-                            onChange={(e) => onSceneImage(sc.id, slot, e.target.files?.[0] ?? null)} />
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <section className="mb-4 card-pro p-3">
+        <p className="mb-2 text-xs font-semibold">
+          {movie.language === "hi" ? "आवाज़ (कथा / पात्र)" : "Voice (narration / characters)"}
+        </p>
+        <div className="flex gap-2">
+          {([
+            ["auto", movie.language === "hi" ? "ऑटो" : "Auto"],
+            ["male", movie.language === "hi" ? "पुरुष" : "Male"],
+            ["female", movie.language === "hi" ? "महिला" : "Female"],
+          ] as const).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setVoiceGender(val)}
+              className={cn(
+                "flex-1 rounded-lg border py-2 text-xs font-medium",
+                voiceGender === val
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-border text-muted",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[10px] text-muted">
+          {movie.language === "hi"
+            ? "फ्री सिस्टम TTS — 4 कथावाचक + 6 पात्र heuristics"
+            : "Free system TTS — 4 narrator + 6 character heuristics"}
+        </p>
+      </section>
 
       <section className="mb-4 card-pro p-3">
         <p className="mb-2 text-xs font-semibold">Motion intensity</p>
@@ -618,95 +593,111 @@ export function ProducePage() {
             }),
           );
         }}
-        onPickImage={(sceneId, slot, imageDataOrUrl) => {
-          if (!movieId) return;
-          updateScene(movieId, sceneId, slot === "top"
-            ? { imageTopLocal: imageDataOrUrl }
-            : { imageBottomLocal: imageDataOrUrl });
-          if (slot === "top") {
-            setSceneProgress((prev) =>
-              prev.map((s) =>
-                s.id === sceneId ? { ...s, thumb: imageDataOrUrl } : s,
-              ),
-            );
-          }
-        }}
-        movie={{
-          title: movie.title,
-          language: movie.language,
-          scenes: movie.scenes.map((s) => ({
-            id: s.id, order: s.order, title: s.title, mood: s.mood,
-            dialogue: s.dialogue, narration: s.narration,
-            visualPrompt: s.visualPrompt, gestureNotes: s.gestureNotes,
-          })),
-          characters: movie.characters.map((c) => ({
-            id: c.id,
-            name: c.name,
-            role: c.role,
-            appearance: c.appearance,
-            referenceImageLocal: c.referenceImageLocal,
-            referenceImageUrl: c.referenceImageUrl,
-          })),
-        }}
+        language={movie.language}
+        title={movie.title}
+        scenes={sortedScenes.map((s) => ({
+          id: s.id,
+          order: s.order,
+          title: s.title,
+          mood: s.mood,
+          dialogue: s.dialogue,
+          narration: s.narration,
+          visualPrompt: s.visualPrompt,
+          gestureNotes: s.gestureNotes,
+        }))}
+        characters={movie.characters.map((c) => ({
+          id: c.id,
+          name: c.name,
+          role: c.role,
+          appearance: c.appearance,
+          referenceImageLocal: c.referenceImageLocal,
+          referenceImageUrl: c.referenceImageUrl,
+        }))}
       />
 
-      <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="border-b border-border px-3 py-2">
-          <p className="text-xs font-semibold text-muted">
-            Cinematic · motion {motionIntensity}
-          </p>
-          <input value={headline} onChange={(e) => setHeadline(e.target.value)}
-            placeholder={movie.language === "hi" ? "शीर्षक कैप्शन" : "Headline caption"}
-            className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent" />
-        </div>
-        <div className="flex justify-center bg-black py-2">
-          <canvas ref={canvasRef} width={360} height={450} className="max-w-full rounded-lg"
-            style={{ width: "min(360px, 100%)", height: "auto", aspectRatio: "360/450" }} />
-        </div>
-        {cinemaCaption && <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">{cinemaCaption}</p>}
-        {recordStatus && <p className="border-t border-border px-3 py-2 text-center text-xs text-accent">{recordStatus}</p>}
-        <div className="flex flex-wrap items-center gap-2 border-t border-border p-3">
-          <button type="button" disabled={busy || (!movie.scenes.length && !storyboard.length)}
-            onClick={() => runCinematic(false)}
-            className="flex items-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-xs font-medium text-accent disabled:opacity-40">
-            <Film className="h-3.5 w-3.5" /> Play
-          </button>
-          <button type="button" disabled={busy || (!movie.scenes.length && !storyboard.length)}
-            onClick={() => runCinematic(true)}
-            className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-40 disabled:shadow-none">
-            {exporting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Exporting…</> : <><Download className="h-3.5 w-3.5" /> Export WebM/MP4</>}
-          </button>
-          {lastExport && (
-            <button type="button" onClick={redownload} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted">
-              <Download className="h-3.5 w-3.5" /> Re-download
-            </button>
-          )}
-          <button type="button" disabled={!storyboard.length || playingBoard || busy} onClick={playStoryboard}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted disabled:opacity-40">
-            <Play className="h-3.5 w-3.5" /> Storyboard
-          </button>
-        </div>
-      </section>
-
-      {frame && (
-        <div className="mb-4 card-pro p-3 text-xs text-muted">
-          Active frame: {frame.title} · {frame.mood}
-        </div>
+      {sortedScenes.length > 0 && (
+        <section className="mb-4 space-y-2">
+          <h2 className="text-sm font-semibold">Scene art {dualScreen ? "(dual)" : "(single)"}</h2>
+          {sortedScenes.map((sc) => (
+            <div key={sc.id} className="card-pro space-y-2 p-3">
+              <p className="text-xs font-medium">{sc.order + 1}. {sc.title}</p>
+              <div className="flex gap-2">
+                {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => (
+                  <label key={slot} className="flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-lg border border-dashed border-border px-2 py-3 text-[10px] text-muted hover:border-accent/40">
+                    <ImagePlus className="h-4 w-4" />
+                    {slot}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => onSceneImage(sc.id, slot, e.target.files?.[0] || null)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
       )}
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">Agents</h2>
-        <ul className="space-y-2">
-          {catalog.map((a) => (
-            <li key={a.id} className="card-pro p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">{a.name}</p>
-                <span className="text-[10px] text-muted">Q{a.qualityScore}/5</span>
-              </div>
-              <p className="mt-1 text-xs text-muted">{a.description}</p>
-              <p className="mt-2 flex items-start gap-1 text-xs text-accent">
-                <ChevronRight className="mt-0.5 h-3 w-3 shrink-0" />{a.upgradePath}
-              </p>
+      <section className="mb-4 card-pro overflow-hidden">
+        <canvas ref={canvasRef} className="mx-auto block w-full max-w-[360px] bg-black" width={360} height={450} />
+        {cinemaCaption && (
+          <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">{cinemaCaption}</p>
+        )}
+        {recordStatus && (
+          <p className="border-t border-border px-3 py-2 text-center text-xs text-amber-400">{recordStatus}</p>
+        )}
+        <div className="flex flex-wrap gap-2 border-t border-border p-3">
+          <button type="button" disabled={busy} onClick={() => runCinematic(false)}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-card px-3 py-2.5 text-sm font-medium border border-border disabled:opacity-50">
+            <Play className="h-4 w-4" /> Play
+          </button>
+          <button type="button" disabled={busy} onClick={() => runCinematic(true)}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent px-3 py-2.5 text-sm font-semibold text-black disabled:opacity-50">
+            <Download className="h-4 w-4" /> Export WebM/MP4
+          </button>
+        </div>
+        {lastExport && (
+          <button type="button" onClick={redownload} className="w-full border-t border-border py-2 text-xs text-accent">
+            Re-download {lastExport.name}
+          </button>
+        )}
+      </section>
+
+      {storyboard.length > 0 && (
+        <section className="mb-4 card-pro p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Storyboard</h2>
+            <button type="button" onClick={playStoryboard} disabled={playingBoard} className="text-xs text-accent">
+              {playingBoard ? "Playing…" : "Play frames"}
+            </button>
+          </div>
+          {frame && (
+            <div className="rounded-lg border border-border bg-black/40 p-3 text-xs">
+              <p className="font-medium text-fg">{frame.title}</p>
+              <p className="mt-1 text-muted">{frame.subtitle}</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="fixed bottom-0 left-0 right-0 border-t border-border bg-bg/95 px-4 py-3 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+        <div className="mx-auto flex max-w-lg gap-2 sm:max-w-2xl">
+          <button type="button" onClick={stopAll} disabled={!busy}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border px-4 py-3 text-sm disabled:opacity-40">
+            <Square className="h-4 w-4" /> Stop
+          </button>
+          <button type="button" onClick={runPipeline} disabled={busy}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-black disabled:opacity-50">
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+            {running ? "Producing…" : "Run production pipeline"}
+          </button>
+        </div>
+        <ul className="mx-auto mt-2 hidden max-w-lg text-[10px] text-muted sm:block sm:max-w-2xl">
+          {catalog.map((c) => (
+            <li key={c.id} className="flex items-center gap-1">
+              <ChevronRight className="h-3 w-3" /> {c.name}: {c.freeNow ? "free" : "upgrade"}
             </li>
           ))}
         </ul>
