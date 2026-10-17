@@ -52,7 +52,6 @@ export interface PlayerOptions {
   useRhubarb?: boolean;
   layout?: "dual" | "single";
   use3dAvatar?: boolean;
-  /** Cartoon body only when no photo — default ON for empty panels */
   bodyPerformance?: boolean;
 }
 
@@ -179,7 +178,6 @@ function drawPanel(
       ctx.translate(-(x + w / 2), -(y + h / 2));
     }
 
-    // Photo poses: front / side (squash) — never cartoon stick figure on real photos
     const poseCycle = (t * 0.35) % 3;
     const sideScale =
       poseCycle < 1 ? 1 : 0.74 + 0.05 * Math.sin(t * 2.2);
@@ -285,35 +283,58 @@ function drawHeadline(
   });
 }
 
+async function ensureVoicesLoaded(): Promise<void> {
+  if (!("speechSynthesis" in window)) return;
+  const existing = window.speechSynthesis.getVoices();
+  if (existing.length) return;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      resolve();
+    };
+    window.speechSynthesis.onvoiceschanged = done;
+    window.setTimeout(done, 600);
+  });
+}
+
 function speakBrowser(
   text: string,
   language: "en" | "hi",
   speaker: string,
   gender: "auto" | "male" | "female" = "auto",
 ): Promise<void> {
-  return new Promise((resolve) => {
-    if (!("speechSynthesis" in window) || !text.trim()) {
-      resolve();
-      return;
-    }
+  return (async () => {
+    if (!("speechSynthesis" in window) || !text.trim()) return;
+    await ensureVoicesLoaded();
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = language === "hi" ? "hi-IN" : "en-IN";
-    const g = gender === "male" || gender === "female" ? gender : undefined;
-    const isNar = /narrat|कथा|वाचक/i.test(speaker);
-    const optionId = isNar
-      ? g === "female"
-        ? "nar-f1"
-        : "nar-m1"
-      : characterVoiceIdForSpeaker(speaker || "Hero", g);
-    const resolved = resolveSystemVoice(optionId, language, g || "male");
-    if (resolved.voice) u.voice = resolved.voice;
-    u.pitch = resolved.pitch;
-    u.rate = resolved.rate;
-    u.onend = () => resolve();
-    u.onerror = () => resolve();
-    window.speechSynthesis.speak(u);
-  });
+    await new Promise<void>((resolve) => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = language === "hi" ? "hi-IN" : "en-IN";
+      const g = gender === "male" || gender === "female" ? gender : undefined;
+      const isNar = /narrat|कथा|वाचक/i.test(speaker);
+      const optionId = isNar
+        ? g === "female"
+          ? "nar-f1"
+          : "nar-m1"
+        : characterVoiceIdForSpeaker(speaker || "Hero", g);
+      const resolved = resolveSystemVoice(optionId, language, g || "male");
+      if (resolved.voice) u.voice = resolved.voice;
+      if (g === "female") {
+        u.pitch = Math.max(resolved.pitch, 1.15);
+        u.rate = resolved.rate;
+      } else if (g === "male") {
+        u.pitch = Math.min(resolved.pitch, 0.9);
+        u.rate = resolved.rate;
+      } else {
+        u.pitch = resolved.pitch;
+        u.rate = resolved.rate;
+      }
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+      window.setTimeout(resolve, Math.min(20000, 800 + text.length * 80));
+    });
+  })();
 }
 
 export function stopScenePlayer() {
@@ -645,8 +666,8 @@ export async function playScenesOnCanvas(
       while (!signal?.stopped) {
         const elapsed = performance.now() - t0;
         if (lineDone && elapsed >= Math.min(minHoldMs, 500)) break;
-        if (elapsed > Math.max(minHoldMs + 500, 20000)) break;
-
+        if (elapsed >= minHoldMs + 4000) break;
+        const t = elapsed / 1000;
         drawFrame(
           ctx,
           w,
@@ -656,9 +677,9 @@ export async function playScenesOnCanvas(
           caption,
           imgTop,
           imgBot,
-          elapsed / 1000,
+          t,
           intensity,
-          !lineDone,
+          true,
           textLen,
           facePerformance,
           cues,
@@ -670,39 +691,32 @@ export async function playScenesOnCanvas(
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
-      await new Promise((r) => setTimeout(r, 120));
     }
   }
 
-  await new Promise((r) => setTimeout(r, 400));
-
   if (recorder && recorder.state !== "inactive") {
-    const blob = await new Promise<Blob>((resolve) => {
-      recorder!.onstop = () => {
-        mixedStream?.getTracks().forEach((tr) => tr.stop());
-        resolve(new Blob(chunks, { type: recorder!.mimeType || mimeType }));
-      };
+    await new Promise<void>((resolve) => {
+      recorder!.onstop = () => resolve();
       recorder!.stop();
     });
-    try {
-      await audioCtx?.close();
-    } catch {
-      /* ignore */
-    }
-    return {
-      blob: blob.size > 0 ? blob : null,
-      mimeType,
-      extension,
-      hadAudioTrack,
-      usedRhubarb,
-    };
+  }
+
+  let blob: Blob | null = null;
+  if (chunks.length) {
+    blob = new Blob(chunks, { type: mimeType });
   }
 
   try {
-    await audioCtx?.close();
+    audioCtx?.close();
   } catch {
     /* ignore */
   }
 
-  return { ...empty, usedRhubarb };
+  return {
+    blob,
+    mimeType,
+    extension,
+    hadAudioTrack,
+    usedRhubarb,
+  };
 }
