@@ -1,7 +1,8 @@
 /**
  * Web Image Agent — multi-source free search + cinematic queries (B)
  * + Character Photo Mind: script-aware character selection & continuity
- * Sources: Wikimedia, Openverse, Met Museum, Art Institute of Chicago
+ * AVG-inspired free stock: Openverse (dual host) + Wikimedia + Met + ArtIC
+ * Sources require no API key.
  */
 
 import {
@@ -30,6 +31,8 @@ export interface ImageCandidate {
   url: string;
   source: ImageSourceId;
   title?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface SceneImageFill {
@@ -41,7 +44,6 @@ export interface SceneImageFill {
   imageTop?: string;
   imageBottom?: string;
   source: ImageSourceId;
-  /** Which characters the mind assigned */
   primaryCharacter?: string;
   secondaryCharacter?: string;
 }
@@ -52,6 +54,9 @@ export interface WebImageAgentResult {
   summary: string;
   mindSummary?: string;
 }
+
+const OPENVERSE_UA =
+  "BharatAI/1.0 (https://bharat-ai-chi.vercel.app; free educational video studio)";
 
 function emotionQueries(mood: string, language: "en" | "hi"): string[] {
   const m = (mood || "neutral").toLowerCase();
@@ -130,28 +135,89 @@ export function buildEmotionSituationQueries(
   return uniq.slice(0, 6);
 }
 
+/** Prefer larger / landscape-friendly images (AVG-style quality bias) */
+function scoreCandidate(c: ImageCandidate, queryTokens: string[]): number {
+  let score = 0;
+  const w = c.width || 0;
+  const h = c.height || 0;
+  if (w >= 800) score += 3;
+  else if (w >= 400) score += 1;
+  if (h >= 600) score += 2;
+  if (w > 0 && h > 0 && w / h >= 0.7 && w / h <= 1.8) score += 1; // usable aspect
+  // Prefer full URL over tiny thumbs in path
+  if (!/thumb|thumbnail|\/\d+px-/i.test(c.url)) score += 2;
+  const hay = `${c.title || ""} ${c.url}`.toLowerCase();
+  for (const t of queryTokens) {
+    if (t.length >= 3 && hay.includes(t.toLowerCase())) score += 2;
+  }
+  if (c.source === "openverse") score += 1; // AVG default free path
+  if (c.source === "wikimedia") score += 1;
+  return score;
+}
+
+function rankByQuality(
+  candidates: ImageCandidate[],
+  query: string,
+): ImageCandidate[] {
+  const tokens = query
+    .toLowerCase()
+    .split(/[^\w\u0900-\u097F]+/)
+    .filter((t) => t.length >= 3);
+  return candidates
+    .map((c) => ({ c, s: scoreCandidate(c, tokens) }))
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.c);
+}
+
+/**
+ * Openverse — dual host fallback (api.openverse.org + engineering),
+ * prefer full `url` over thumbnail (AVG openverse-fetcher pattern).
+ */
 async function searchOpenverse(
   query: string,
   limit = 6,
 ): Promise<ImageCandidate[]> {
-  const q = encodeURIComponent(query.slice(0, 80));
-  const url = `https://api.openverse.org/v1/images/?q=${q}&page_size=${limit}`;
-  try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      results?: Array<{ url?: string; thumbnail?: string; title?: string }>;
-    };
-    return (data.results || [])
-      .map((r) => ({
-        url: r.thumbnail || r.url || "",
-        source: "openverse" as const,
-        title: r.title,
-      }))
-      .filter((c) => c.url.startsWith("http"));
-  } catch {
-    return [];
+  const pageSize = Math.min(limit, 20);
+  const hosts = [
+    "https://api.openverse.org/v1/images/",
+    "https://api.openverse.engineering/v1/images/",
+  ];
+
+  for (const base of hosts) {
+    try {
+      const url = `${base}?q=${encodeURIComponent(query.slice(0, 80))}&page_size=${pageSize}`;
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": OPENVERSE_UA,
+        },
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        results?: Array<{
+          url?: string;
+          thumbnail?: string;
+          title?: string;
+          width?: number;
+          height?: number;
+        }>;
+      };
+      const mapped = (data.results || [])
+        .map((r) => ({
+          // AVG: prefer full url over thumbnail for quality
+          url: r.url || r.thumbnail || "",
+          source: "openverse" as const,
+          title: r.title,
+          width: r.width,
+          height: r.height,
+        }))
+        .filter((c) => c.url.startsWith("http"));
+      if (mapped.length) return mapped.slice(0, limit);
+    } catch {
+      /* try next host */
+    }
   }
+  return [];
 }
 
 async function searchMetMuseum(
@@ -178,7 +244,8 @@ async function searchMetMuseum(
             primaryImage?: string;
             title?: string;
           };
-          const img = obj.primaryImageSmall || obj.primaryImage;
+          // Prefer full primary when available
+          const img = obj.primaryImage || obj.primaryImageSmall;
           if (img) out.push({ url: img, source: "met", title: obj.title });
         } catch {
           /* skip */
@@ -208,9 +275,11 @@ async function searchArtic(
     return (data.data || [])
       .filter((d) => d.image_id)
       .map((d) => ({
-        url: `https://www.artic.edu/iiif/2/${d.image_id}/full/400,/0/default.jpg`,
+        // Larger IIIF size for better quality
+        url: `https://www.artic.edu/iiif/2/${d.image_id}/full/843,/0/default.jpg`,
         source: "artic" as const,
         title: d.title,
+        width: 843,
       }));
   } catch {
     return [];
@@ -225,20 +294,20 @@ export async function searchMultiSource(
     searchPublicImages(query, 5).then((urls) =>
       urls.map((url) => ({ url, source: "wikimedia" as const })),
     ),
-    searchOpenverse(query, 6),
+    searchOpenverse(query, 8),
     searchMetMuseum(query, 4),
     searchArtic(query, 4),
   ]);
   const merged: ImageCandidate[] = [];
   const seen = new Set<string>();
-  for (const c of [...wiki, ...open, ...met, ...artic]) {
+  // Openverse first (AVG default free path), then wiki, then museums
+  for (const c of [...open, ...wiki, ...met, ...artic]) {
     const key = c.url.split("?")[0];
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(c);
-    if (merged.length >= target) break;
   }
-  return merged;
+  return rankByQuality(merged, query).slice(0, target);
 }
 
 export async function materializeImage(url: string): Promise<string> {
@@ -269,7 +338,7 @@ async function searchForCharacterQueries(
   const candidates: ImageCandidate[] = [];
   for (const q of queries) {
     if (candidates.length >= target) break;
-    const batch = await searchMultiSource(q, target - candidates.length);
+    const batch = await searchMultiSource(q, target - candidates.length + 4);
     for (const c of batch) {
       const key = c.url.split("?")[0];
       if (usedUrls.has(key)) continue;
@@ -278,7 +347,7 @@ async function searchForCharacterQueries(
       if (candidates.length >= target) break;
     }
   }
-  return candidates;
+  return rankByQuality(candidates, queries[0] || "");
 }
 
 export async function runWebImageAgent(opts: {
@@ -286,7 +355,6 @@ export async function runWebImageAgent(opts: {
   language: "en" | "hi";
   layout: ScreenLayout;
   scenes: DirectorSceneInput[];
-  /** Script cast — enables Character Photo Mind */
   characters?: MindCharacter[];
   onProgress?: (msg: string) => void;
 }): Promise<WebImageAgentResult> {
@@ -299,7 +367,6 @@ export async function runWebImageAgent(opts: {
   const cast = opts.characters || [];
   continuity.seedFromCast(cast);
 
-  // Mind plan: who appears in which scene + character queries
   const mind =
     cast.length > 0
       ? planCharacterPhotos({
@@ -332,21 +399,19 @@ export async function runWebImageAgent(opts: {
     const sc = sorted[i];
     opts.onProgress?.(
       language === "hi"
-        ? `Photo mind: सीन ${i + 1}/${sorted.length}…`
-        : `Photo mind: scene ${i + 1}/${sorted.length}…`,
+        ? `AVG stock + mind: सीन ${i + 1}/${sorted.length}…`
+        : `AVG stock + mind: scene ${i + 1}/${sorted.length}…`,
     );
 
     const plan = mind?.scenes.find((p) => p.sceneId === sc.id) || mind?.scenes[i];
     const primaryName = plan?.primary?.characterName;
     const secondaryName = plan?.secondary?.characterName;
 
-    // 1) Character-specific queries first (mind)
     const charQueries = [
       ...(plan?.primary?.queries || []),
       ...(plan?.secondary?.queries || []),
       ...(plan?.situationQueries || []),
     ];
-    // 2) Then cinematic / emotion fallbacks
     const moodQueries = buildEmotionSituationQueries(sc, title, language);
     const queries = [...charQueries, ...moodQueries].filter(Boolean);
     const uniqQ: string[] = [];
@@ -356,7 +421,6 @@ export async function runWebImageAgent(opts: {
 
     let candidates: ImageCandidate[] = [];
 
-    // Continuity: if we already picked a face for this character, prefer it
     const contTop = primaryName ? continuity.get(primaryName) : undefined;
     const contBottom =
       layout === "dual" && secondaryName
@@ -377,9 +441,9 @@ export async function runWebImageAgent(opts: {
           if (candidates.length >= 14) break;
         }
       }
+      candidates = rankByQuality(candidates, uniqQ[0] || sc.title);
     }
 
-    // Rank by character name / appearance tokens
     if (primaryName && candidates.length) {
       const ranked = rankCandidatesForCharacter(
         candidates,
@@ -390,6 +454,8 @@ export async function runWebImageAgent(opts: {
         url: r.url,
         source: (r.source as ImageSourceId) || "mixed",
         title: r.title,
+        width: (r as ImageCandidate).width,
+        height: (r as ImageCandidate).height,
       }));
     }
 
@@ -397,7 +463,6 @@ export async function runWebImageAgent(opts: {
     const material: string[] = [];
     let source: ImageSourceId = candidates[0]?.source || "none";
 
-    // Top panel: continuity first, else best ranked candidate
     if (contTop) {
       material.push(contTop);
       source = "continuity";
@@ -407,7 +472,6 @@ export async function runWebImageAgent(opts: {
       if (primaryName) continuity.set(primaryName, img);
     }
 
-    // Bottom panel
     if (layout === "dual") {
       if (contBottom && contBottom !== material[0]) {
         material.push(contBottom);
@@ -417,13 +481,11 @@ export async function runWebImageAgent(opts: {
         material.push(img);
         if (secondaryName) continuity.set(secondaryName, img);
       } else if (candidates[0] && !material[1]) {
-        // fallback: second materialize of next candidate or same
         const img = await materializeImage(candidates[0].url);
         material.push(img);
       }
     }
 
-    // Ensure we tried at least `need` materials from candidates if continuity empty
     while (material.length < need && candidates[material.length]) {
       const img = await materializeImage(candidates[material.length].url);
       material.push(img);
@@ -462,7 +524,7 @@ export async function runWebImageAgent(opts: {
     mindSummary: mind?.summary,
     summary:
       language === "hi"
-        ? `${filledCount}/${sorted.length} सीन · mind: ${withCast} cast-matched · ~${Math.round(avg)} विकल्प`
-        : `Filled ${filledCount}/${sorted.length} · mind: ${withCast} cast-matched · ~${Math.round(avg)} options`,
+        ? `${filledCount}/${sorted.length} सीन · mind ${withCast} · AVG free stock · ~${Math.round(avg)} विकल्प`
+        : `Filled ${filledCount}/${sorted.length} · mind ${withCast} · AVG free stock · ~${Math.round(avg)} options`,
   };
 }
