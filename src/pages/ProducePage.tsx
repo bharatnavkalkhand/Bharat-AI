@@ -84,7 +84,7 @@ export function ProducePage() {
     () => (typeof localStorage !== "undefined" && localStorage.getItem("bharat_video_worker_url")) || "",
   );
   const [doScript] = useState(true);
-  const [doVoice] = useState(false);
+  const [doVoice, setDoVoice] = useState(true);
   const [voiceGender, setVoiceGender] = useState<"auto" | "male" | "female">("auto");
   const [doVideo] = useState(true);
   const [headline, setHeadline] = useState("");
@@ -97,6 +97,17 @@ export function ProducePage() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [sceneProgress, setSceneProgress] = useState<SceneProgressItem[]>([]);
   const [activeSceneIndex, setActiveSceneIndex] = useState<number | undefined>(undefined);
+
+  // Preload browser TTS voices (mobile needs this before Play)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const load = () => window.speechSynthesis.getVoices();
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!movie || running || playingCinema || exporting) return;
@@ -401,8 +412,8 @@ export function ProducePage() {
         <p className="leading-relaxed">
           <strong className="text-fg">Tip:</strong>{" "}
           {movie.language === "hi"
-            ? "सिंगल स्क्रीन चुनें + B से photos auto-fill — stick figure बंद।"
-            : "Pick Single screen + B auto-fill photos — avoids stick figures."}
+            ? "सिंगल स्क्रीन + आवाज़ ON + Play (volume). Gender male/female try करें।"
+            : "Single screen + Voice ON + Play (volume). Try male/female gender."}
         </p>
       </div>
 
@@ -459,17 +470,22 @@ export function ProducePage() {
             {movie.language === "hi" ? "ड्यूल स्क्रीन" : "Dual screen"}
           </button>
         </div>
-        <p className="mt-1.5 text-[10px] text-muted">
-          {movie.language === "hi"
-            ? "सिंगल = एक फुल फ्रेम · ड्यूल = ऊपर/नीचे दो पैनल"
-            : "Single = one full frame · Dual = top/bottom panels"}
-        </p>
       </section>
 
       <section className="mb-4 card-pro p-3">
-        <p className="mb-2 text-xs font-semibold">
-          {movie.language === "hi" ? "आवाज़ (कथा / पात्र)" : "Voice (narration / characters)"}
-        </p>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold">
+            {movie.language === "hi" ? "आवाज़ (कथा / पात्र)" : "Voice (narration / characters)"}
+          </p>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted">
+            <input
+              type="checkbox"
+              checked={doVoice}
+              onChange={(e) => setDoVoice(e.target.checked)}
+            />
+            {movie.language === "hi" ? "पाइपलाइन में आवाज़" : "Voice in pipeline"}
+          </label>
+        </div>
         <div className="flex gap-2">
           {([
             ["auto", movie.language === "hi" ? "ऑटो" : "Auto"],
@@ -491,6 +507,11 @@ export function ProducePage() {
             </button>
           ))}
         </div>
+        <p className="mt-2 text-[10px] text-muted">
+          {movie.language === "hi"
+            ? "Gender चुनो → नीचे Play दबाओ (phone volume ON)।"
+            : "Pick gender → press Play below (phone volume ON)."}
+        </p>
       </section>
 
       <section className="mb-4 card-pro p-3">
