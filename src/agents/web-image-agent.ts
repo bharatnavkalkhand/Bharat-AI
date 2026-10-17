@@ -1,5 +1,6 @@
 /**
  * Web Image Agent — multi-source free search + cinematic queries (B)
+ * + Character Photo Mind: script-aware character selection & continuity
  * Sources: Wikimedia, Openverse, Met Museum, Art Institute of Chicago
  */
 
@@ -9,6 +10,12 @@ import {
   type ScreenLayout,
 } from "./director-agent";
 import { buildCinematicQueries } from "./cinematic-prompts";
+import {
+  planCharacterPhotos,
+  CharacterContinuityMap,
+  rankCandidatesForCharacter,
+  type MindCharacter,
+} from "./character-photo-mind";
 
 export type ImageSourceId =
   | "wikimedia"
@@ -16,6 +23,7 @@ export type ImageSourceId =
   | "met"
   | "artic"
   | "mixed"
+  | "continuity"
   | "none";
 
 export interface ImageCandidate {
@@ -33,12 +41,16 @@ export interface SceneImageFill {
   imageTop?: string;
   imageBottom?: string;
   source: ImageSourceId;
+  /** Which characters the mind assigned */
+  primaryCharacter?: string;
+  secondaryCharacter?: string;
 }
 
 export interface WebImageAgentResult {
   fills: SceneImageFill[];
   filledCount: number;
   summary: string;
+  mindSummary?: string;
 }
 
 function emotionQueries(mood: string, language: "en" | "hi"): string[] {
@@ -249,11 +261,33 @@ export async function materializeImage(url: string): Promise<string> {
   }
 }
 
+async function searchForCharacterQueries(
+  queries: string[],
+  usedUrls: Set<string>,
+  target = 10,
+): Promise<ImageCandidate[]> {
+  const candidates: ImageCandidate[] = [];
+  for (const q of queries) {
+    if (candidates.length >= target) break;
+    const batch = await searchMultiSource(q, target - candidates.length);
+    for (const c of batch) {
+      const key = c.url.split("?")[0];
+      if (usedUrls.has(key)) continue;
+      usedUrls.add(key);
+      candidates.push(c);
+      if (candidates.length >= target) break;
+    }
+  }
+  return candidates;
+}
+
 export async function runWebImageAgent(opts: {
   title: string;
   language: "en" | "hi";
   layout: ScreenLayout;
   scenes: DirectorSceneInput[];
+  /** Script cast — enables Character Photo Mind */
+  characters?: MindCharacter[];
   onProgress?: (msg: string) => void;
 }): Promise<WebImageAgentResult> {
   const { title, language, layout, scenes } = opts;
@@ -261,48 +295,152 @@ export async function runWebImageAgent(opts: {
   const fills: SceneImageFill[] = [];
   let filledCount = 0;
   const usedUrls = new Set<string>();
+  const continuity = new CharacterContinuityMap();
+  const cast = opts.characters || [];
+  continuity.seedFromCast(cast);
+
+  // Mind plan: who appears in which scene + character queries
+  const mind =
+    cast.length > 0
+      ? planCharacterPhotos({
+          title,
+          language,
+          characters: cast,
+          scenes: sorted.map((s) => ({
+            id: s.id,
+            order: s.order,
+            title: s.title,
+            mood: s.mood,
+            dialogue: s.dialogue,
+            narration: s.narration,
+            visualPrompt: s.visualPrompt,
+            gestureNotes: s.gestureNotes,
+          })),
+          layout,
+        })
+      : null;
+
+  if (mind) {
+    opts.onProgress?.(
+      language === "hi"
+        ? `Character Mind: ${mind.summary}`
+        : `Character Mind: ${mind.summary}`,
+    );
+  }
 
   for (let i = 0; i < sorted.length; i++) {
     const sc = sorted[i];
     opts.onProgress?.(
       language === "hi"
-        ? `Cinematic search: सीन ${i + 1}/${sorted.length}…`
-        : `Cinematic search: scene ${i + 1}/${sorted.length}…`,
+        ? `Photo mind: सीन ${i + 1}/${sorted.length}…`
+        : `Photo mind: scene ${i + 1}/${sorted.length}…`,
     );
 
-    const queries = buildEmotionSituationQueries(sc, title, language);
+    const plan = mind?.scenes.find((p) => p.sceneId === sc.id) || mind?.scenes[i];
+    const primaryName = plan?.primary?.characterName;
+    const secondaryName = plan?.secondary?.characterName;
+
+    // 1) Character-specific queries first (mind)
+    const charQueries = [
+      ...(plan?.primary?.queries || []),
+      ...(plan?.secondary?.queries || []),
+      ...(plan?.situationQueries || []),
+    ];
+    // 2) Then cinematic / emotion fallbacks
+    const moodQueries = buildEmotionSituationQueries(sc, title, language);
+    const queries = [...charQueries, ...moodQueries].filter(Boolean);
+    const uniqQ: string[] = [];
+    for (const q of queries) {
+      if (!uniqQ.includes(q)) uniqQ.push(q);
+    }
+
     let candidates: ImageCandidate[] = [];
 
-    for (const q of queries) {
-      if (candidates.length >= 14) break;
-      const batch = await searchMultiSource(q, 14 - candidates.length);
-      for (const c of batch) {
-        const key = c.url.split("?")[0];
-        if (usedUrls.has(key)) continue;
-        usedUrls.add(key);
-        candidates.push(c);
+    // Continuity: if we already picked a face for this character, prefer it
+    const contTop = primaryName ? continuity.get(primaryName) : undefined;
+    const contBottom =
+      layout === "dual" && secondaryName
+        ? continuity.get(secondaryName)
+        : undefined;
+
+    if (charQueries.length) {
+      candidates = await searchForCharacterQueries(uniqQ.slice(0, 6), usedUrls, 14);
+    } else {
+      for (const q of uniqQ.slice(0, 6)) {
         if (candidates.length >= 14) break;
+        const batch = await searchMultiSource(q, 14 - candidates.length);
+        for (const c of batch) {
+          const key = c.url.split("?")[0];
+          if (usedUrls.has(key)) continue;
+          usedUrls.add(key);
+          candidates.push(c);
+          if (candidates.length >= 14) break;
+        }
       }
     }
 
+    // Rank by character name / appearance tokens
+    if (primaryName && candidates.length) {
+      const ranked = rankCandidatesForCharacter(
+        candidates,
+        primaryName,
+        plan?.primary?.role,
+      );
+      candidates = ranked.map((r) => ({
+        url: r.url,
+        source: (r.source as ImageSourceId) || "mixed",
+        title: r.title,
+      }));
+    }
+
     const need = layout === "dual" ? 2 : 1;
-    const picked = candidates.slice(0, need);
     const material: string[] = [];
-    for (const c of picked) {
-      material.push(await materializeImage(c.url));
+    let source: ImageSourceId = candidates[0]?.source || "none";
+
+    // Top panel: continuity first, else best ranked candidate
+    if (contTop) {
+      material.push(contTop);
+      source = "continuity";
+    } else if (candidates[0]) {
+      const img = await materializeImage(candidates[0].url);
+      material.push(img);
+      if (primaryName) continuity.set(primaryName, img);
+    }
+
+    // Bottom panel
+    if (layout === "dual") {
+      if (contBottom && contBottom !== material[0]) {
+        material.push(contBottom);
+        source = source === "continuity" ? "continuity" : "mixed";
+      } else if (candidates[1]) {
+        const img = await materializeImage(candidates[1].url);
+        material.push(img);
+        if (secondaryName) continuity.set(secondaryName, img);
+      } else if (candidates[0] && !material[1]) {
+        // fallback: second materialize of next candidate or same
+        const img = await materializeImage(candidates[0].url);
+        material.push(img);
+      }
+    }
+
+    // Ensure we tried at least `need` materials from candidates if continuity empty
+    while (material.length < need && candidates[material.length]) {
+      const img = await materializeImage(candidates[material.length].url);
+      material.push(img);
     }
 
     const sources = new Set(candidates.map((c) => c.source));
-    const source: ImageSourceId =
-      sources.size > 1 ? "mixed" : candidates[0]?.source || "none";
+    if (sources.size > 1 && source !== "continuity") source = "mixed";
 
     const fill: SceneImageFill = {
       sceneId: sc.id,
       title: sc.title,
       mood: sc.mood,
-      queries,
+      queries: uniqQ.slice(0, 8),
       candidates,
       source,
+      primaryCharacter: primaryName,
+      secondaryCharacter: secondaryName,
     };
 
     if (material[0]) {
@@ -316,13 +454,15 @@ export async function runWebImageAgent(opts: {
 
   const avg =
     fills.reduce((a, f) => a + f.candidates.length, 0) / Math.max(fills.length, 1);
+  const withCast = fills.filter((f) => f.primaryCharacter).length;
 
   return {
     fills,
     filledCount,
+    mindSummary: mind?.summary,
     summary:
       language === "hi"
-        ? `${filledCount}/${sorted.length} सीन · cinematic queries · ~${Math.round(avg)} विकल्प`
-        : `Filled ${filledCount}/${sorted.length} · cinematic queries · ~${Math.round(avg)} options`,
+        ? `${filledCount}/${sorted.length} सीन · mind: ${withCast} cast-matched · ~${Math.round(avg)} विकल्प`
+        : `Filled ${filledCount}/${sorted.length} · mind: ${withCast} cast-matched · ~${Math.round(avg)} options`,
   };
 }
