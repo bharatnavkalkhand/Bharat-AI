@@ -48,6 +48,10 @@ export interface AgentRunInput {
     useCloudLlm?: boolean;
     workerUrl?: string;
     voiceGender?: "auto" | "male" | "female";
+    /** Free browser TTS catalog id for narration */
+    narratorVoiceId?: string;
+    /** Free browser TTS catalog id for character dialogue */
+    characterVoiceId?: string;
   };
 }
 
