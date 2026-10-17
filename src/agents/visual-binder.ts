@@ -49,6 +49,7 @@ export function bindScenesForPlayer(
       visualPrompt,
       imageTop: top,
       imageBottom: bottom !== top ? bottom : sc.imageBottomLocal || top,
+      audioUrl: sc.audioLocal || sc.audioUrl,
     };
   });
 }
@@ -65,10 +66,29 @@ export function readImageAsDataUrl(file: File): Promise<string> {
   });
 }
 
+/** Phone-friendly audio import (WAV/MP3/M4A) as data URL for Play */
+export function readAudioAsDataUrl(file: File): Promise<string> {
+  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|ogg|aac)$/i.test(file.name)) {
+    return Promise.reject(new Error("Please pick an audio file (mp3/wav/m4a)"));
+  }
+  // ~2.5MB soft limit — localStorage/zustand persist
+  if (file.size > 2.5 * 1024 * 1024) {
+    return Promise.reject(new Error("Audio too large (max ~2.5 MB per scene)"));
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Failed to read audio"));
+    };
+    reader.onerror = () => reject(new Error("Failed to read audio"));
+    reader.readAsDataURL(file);
+  });
+}
+
 /** C — import frame from external AI app (image or first-frame of video later) */
 export function readMediaAsDataUrl(file: File): Promise<string> {
   if (file.type.startsWith("image/")) return readImageAsDataUrl(file);
-  // Video: store as object URL string is not persistent; read as data URL if small
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
