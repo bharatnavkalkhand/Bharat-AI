@@ -47,6 +47,14 @@ export interface DirectorControlsProps {
       visualPrompt?: string;
       gestureNotes?: string;
     }>;
+    characters?: Array<{
+      id?: string;
+      name: string;
+      role?: string;
+      appearance?: string;
+      referenceImageLocal?: string;
+      referenceImageUrl?: string;
+    }>;
   };
 }
 
@@ -111,7 +119,11 @@ export function DirectorControls({
       return;
     }
     setFillBusy(true);
-    onStatus?.("Cinematic multi-source search…");
+    onStatus?.(
+      movie.language === "hi"
+        ? "Character Mind + cinematic search…"
+        : "Character Mind + cinematic search…",
+    );
     try {
       const layout: ScreenLayout = dualScreen ? "dual" : "single";
       const result = await runWebImageAgent({
@@ -119,12 +131,13 @@ export function DirectorControls({
         language: movie.language,
         layout,
         scenes: movie.scenes,
+        characters: movie.characters || [],
         onProgress: (msg) => onStatus?.(msg),
       });
       setLastFills(result.fills);
       if (result.fills[0]) setActiveSceneId(result.fills[0].sceneId);
       onApplyImages?.(result.fills);
-      onStatus?.(result.summary);
+      onStatus?.(result.summary + (result.mindSummary ? ` · ${result.mindSummary}` : ""));
     } catch (e) {
       onStatus?.(e instanceof Error ? e.message : "Web image fill failed");
     } finally {
@@ -217,7 +230,7 @@ export function DirectorControls({
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-3">
       <p className="mb-2 text-xs font-semibold text-fg">
-        A · B · C — Worker · Cinematic art · Import frames
+        A · B · C — Worker · Character Mind art · Import frames
       </p>
 
       <label className="flex items-center gap-2 text-xs font-medium">
@@ -273,8 +286,8 @@ export function DirectorControls({
         onClick={autoFillFromWeb}
       >
         {fillBusy
-          ? "Cinematic search…"
-          : "B · Auto-fill cinematic art (free sources)"}
+          ? "Character Mind searching…"
+          : "B · Auto-fill by script characters (free sources)"}
       </button>
 
       <button
@@ -325,6 +338,9 @@ export function DirectorControls({
         <div className="mt-3 space-y-2">
           <p className="text-[11px] font-medium text-muted">
             Scene · pick from candidates
+            {activeFill?.primaryCharacter
+              ? ` · ${activeFill.primaryCharacter}`
+              : ""}
           </p>
           <div className="flex flex-wrap gap-1">
             {lastFills.map((f, i) => (
@@ -338,7 +354,7 @@ export function DirectorControls({
                     : "bg-bg text-muted border border-border"
                 }`}
               >
-                {i + 1}. {f.mood}
+                {i + 1}. {f.primaryCharacter || f.mood}
               </button>
             ))}
           </div>
@@ -346,8 +362,14 @@ export function DirectorControls({
           {activeFill && (
             <>
               <p className="text-[10px] text-muted">
-                {activeFill.title} · {activeFill.candidates.length} options ·{" "}
-                {activeFill.source}
+                {activeFill.title}
+                {activeFill.primaryCharacter
+                  ? ` · ${activeFill.primaryCharacter}`
+                  : ""}
+                {activeFill.secondaryCharacter
+                  ? ` + ${activeFill.secondaryCharacter}`
+                  : ""}{" "}
+                · {activeFill.candidates.length} options · {activeFill.source}
               </p>
               <div className="grid grid-cols-4 gap-1.5">
                 {activeFill.candidates.slice(0, 14).map((c, idx) => (
