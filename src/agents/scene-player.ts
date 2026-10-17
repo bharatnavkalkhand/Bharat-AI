@@ -1,6 +1,7 @@
 /**
  * Scene player: layered cinema — BG art + full-body motion + lips + export.
  * Photos animate with poses; cartoon body only when no photo is available.
+ * Supports per-scene imported audio (phone VoiceStudio/CapCut files).
  */
 
 import { prepareTimedLines, type TimedLine } from "./tts-engine";
@@ -34,6 +35,8 @@ export interface PlayerScene {
   visualPrompt?: string;
   imageTop?: string;
   imageBottom?: string;
+  /** Imported scene audio (data URL) — skips browser TTS for this scene */
+  audioUrl?: string;
 }
 
 export interface PlayerOptions {
@@ -363,6 +366,31 @@ export function pickRecorderMime(): {
   return { mimeType: "video/webm", extension: "webm" };
 }
 
+async function decodeAudioUrl(
+  url: string,
+  ctx: AudioContext,
+): Promise<{ buffer: AudioBuffer; durationSec: number } | null> {
+  try {
+    const res = await fetch(url);
+    const arr = await res.arrayBuffer();
+    const buffer = await ctx.decodeAudioData(arr.slice(0));
+    return { buffer, durationSec: buffer.duration };
+  } catch {
+    return null;
+  }
+}
+
+function playHtmlAudio(url: string): { el: HTMLAudioElement; done: Promise<void> } {
+  const el = new Audio(url);
+  el.preload = "auto";
+  const done = new Promise<void>((resolve) => {
+    el.onended = () => resolve();
+    el.onerror = () => resolve();
+    void el.play().catch(() => resolve());
+  });
+  return { el, done };
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -610,6 +638,65 @@ export async function playScenesOnCanvas(
     options.onScene?.(si, scenes.length);
     const imgTop = await loadImg(sc.imageTop);
     const imgBot = await loadImg(sc.imageBottom);
+
+    if (sc.audioUrl) {
+      const caption =
+        (sc.dialogue || sc.narration || sc.title || "").split("\n")[0].slice(0, 90);
+      options.onCaption?.(caption || sc.title);
+      if (!audioCtx) {
+        try {
+          audioCtx = new AudioContext();
+          if (audioCtx.state === "suspended") await audioCtx.resume();
+        } catch {
+          audioCtx = null;
+        }
+      }
+      let durationSec = 4;
+      let lineDone = false;
+      const t0 = performance.now();
+      if (audioCtx) {
+        const decoded = await decodeAudioUrl(sc.audioUrl, audioCtx);
+        if (decoded) {
+          durationSec = Math.max(1.5, decoded.durationSec);
+          const src = audioCtx.createBufferSource();
+          src.buffer = decoded.buffer;
+          if (dest) src.connect(dest);
+          src.connect(audioCtx.destination);
+          src.onended = () => {
+            lineDone = true;
+          };
+          src.start();
+        } else {
+          const { done } = playHtmlAudio(sc.audioUrl);
+          void done.then(() => {
+            lineDone = true;
+          });
+        }
+      } else {
+        const { done } = playHtmlAudio(sc.audioUrl);
+        void done.then(() => {
+          lineDone = true;
+        });
+      }
+      const minHoldMs = Math.max(2000, (durationSec * 1000) | 0);
+      const textLen = (sc.dialogue || sc.narration || sc.title || "").length;
+      while (lineCursor < dialogueLines.length && dialogueLines[lineCursor]?.sceneIndex === si) {
+        lineCursor += 1;
+      }
+      while (!signal?.stopped) {
+        const elapsed = performance.now() - t0;
+        if (lineDone && elapsed >= Math.min(minHoldMs, 600)) break;
+        if (elapsed >= minHoldMs + 2000) break;
+        const t = elapsed / 1000;
+        drawFrame(
+          ctx, w, h, sc, headline, caption || sc.title, imgTop, imgBot, t, intensity,
+          true, textLen, facePerformance, null, null, durationSec, layout, use3dAvatar, bodyPerformance,
+        );
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      }
+      continue;
+    }
+
     const turns = sc.dialogue
       ? parseTurns(sc.dialogue)
       : sc.narration
@@ -669,25 +756,8 @@ export async function playScenesOnCanvas(
         if (elapsed >= minHoldMs + 4000) break;
         const t = elapsed / 1000;
         drawFrame(
-          ctx,
-          w,
-          h,
-          sc,
-          headline,
-          caption,
-          imgTop,
-          imgBot,
-          t,
-          intensity,
-          true,
-          textLen,
-          facePerformance,
-          cues,
-          energy,
-          durationSec,
-          layout,
-          use3dAvatar,
-          bodyPerformance,
+          ctx, w, h, sc, headline, caption, imgTop, imgBot, t, intensity,
+          true, textLen, facePerformance, cues, energy, durationSec, layout, use3dAvatar, bodyPerformance,
         );
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
