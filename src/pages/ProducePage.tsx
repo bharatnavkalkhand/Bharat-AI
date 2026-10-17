@@ -94,8 +94,8 @@ export function ProducePage() {
   const [doVideo, setDoVideo] = useState(true);
   const [headline, setHeadline] = useState("");
   const [motionIntensity, setMotionIntensity] = useState<MotionIntensity>("high");
-  const [facePerformance, setFacePerformance] = useState(true);
-  const [dualScreen, setDualScreen] = useState(true);
+  const [facePerformance, setFacePerformance] = useState(false);
+  const [dualScreen, setDualScreen] = useState(false);
   const [use3dAvatar, setUse3dAvatar] = useState(false);
 
   const [overallPhase, setOverallPhase] = useState<OverallPhase>("idle");
@@ -162,38 +162,17 @@ export function ProducePage() {
     stopScenePlayer();
     stopRef.current.stopped = true;
     setLastExport(null);
-
     setOverallPhase("story");
     setProgressPercent(4);
     setActiveSceneIndex(undefined);
-    const seed = scenesToProgressItems(movie.scenes).map((s) => ({
-      ...s,
-      phase: "queued" as ScenePhase,
-    }));
-    setSceneProgress(
-      seed.length
-        ? seed
-        : [
-            {
-              id: "tmp-0",
-              order: 0,
-              title: movie.language === "hi" ? "स्क्रिप्ट तैयार हो रही है" : "Generating script",
-              phase: "queued",
-            },
-          ],
-    );
-
+    const seed = scenesToProgressItems(movie.scenes).map((s) => ({ ...s, phase: "queued" as ScenePhase }));
+    setSceneProgress(seed.length ? seed : [{ id: "tmp-0", order: 0, title: movie.language === "hi" ? "स्क्रिप्ट तैयार हो रही है" : "Generating script", phase: "queued" }]);
     if (workerUrl) localStorage.setItem("bharat_video_worker_url", workerUrl.trim());
-
     const result = await runMoviePipeline(
       {
         movieId, title: movie.title, synopsis: movie.synopsis || "", language: movie.language,
         targetDuration: movie.targetDuration, genres: movie.genres || [],
-        scenes: movie.scenes.map((s) => ({
-          id: s.id, order: s.order, title: s.title, mood: s.mood, dialogue: s.dialogue,
-          narration: s.narration, gestureNotes: s.gestureNotes, visualPrompt: s.visualPrompt,
-          characterIds: s.characterIds,
-        })),
+        scenes: movie.scenes.map((s) => ({ id: s.id, order: s.order, title: s.title, mood: s.mood, dialogue: s.dialogue, narration: s.narration, gestureNotes: s.gestureNotes, visualPrompt: s.visualPrompt, characterIds: s.characterIds })),
         characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role, appearance: c.appearance })),
         options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined, voiceGender },
       },
@@ -201,18 +180,9 @@ export function ProducePage() {
       {
         onStage: (stage, status, msg) => {
           setPipeline((p) => ({ ...p, [stage]: status, lastMessage: msg, updatedAt: new Date().toISOString() }));
-          if (stage === "script" && status === "running") {
-            setOverallPhase("story");
-            setProgressPercent(10);
-          }
-          if (stage === "voice" && status === "running") {
-            setOverallPhase("scenes");
-            setProgressPercent((p) => Math.max(p, 25));
-          }
-          if (stage === "video" && status === "running") {
-            setOverallPhase("scenes");
-            setProgressPercent((p) => Math.max(p, 40));
-          }
+          if (stage === "script" && status === "running") { setOverallPhase("story"); setProgressPercent(10); }
+          if (stage === "voice" && status === "running") { setOverallPhase("scenes"); setProgressPercent((p) => Math.max(p, 25)); }
+          if (stage === "video" && status === "running") { setOverallPhase("scenes"); setProgressPercent((p) => Math.max(p, 40)); }
         },
         onNarrationLine: () => undefined,
       },
@@ -220,70 +190,32 @@ export function ProducePage() {
     setPipeline(result.pipeline);
     const clipUrl = result.video?.data?.clipUrl;
     setGeneratedClipUrl(typeof clipUrl === "string" && /^https:\/\//i.test(clipUrl) ? clipUrl : "");
-
     if (result.script) {
       applyScriptResult(movieId, result.script, { replaceCast: true, replaceScenes: true });
       setProgressPercent(35);
       setOverallPhase("scenes");
-
       const afterScript = useMovieStore.getState().movies.find((m) => m.id === movieId);
       const freshScenes = (afterScript?.scenes || []).slice().sort((a, b) => a.order - b.order);
-      setSceneProgress(
-        freshScenes.map((s) => ({
-          id: s.id,
-          order: s.order,
-          title: s.title,
-          mood: s.mood,
-          phase: "queued" as ScenePhase,
-          detail: undefined,
-        })),
-      );
-
+      setSceneProgress(freshScenes.map((s) => ({ id: s.id, order: s.order, title: s.title, mood: s.mood, phase: "queued" as ScenePhase })));
       try {
-        setRecordStatus(
-          movie.language === "hi"
-            ? "Character Mind photos जोड़ रहा है…"
-            : "Character Mind selecting photos…",
-        );
-
+        setRecordStatus(movie.language === "hi" ? "Character Mind photos जोड़ रहा है…" : "Character Mind selecting photos…");
         const n = Math.max(freshScenes.length, 1);
         for (let i = 0; i < freshScenes.length; i++) {
           if (stopRef.current.stopped) break;
           patchScenePhase(i, doVoice ? "voice" : "image");
           setProgressPercent(35 + Math.round((i / n) * 40));
           await sleep(180);
-          if (doVoice) {
-            patchScenePhase(i, "image");
-            await sleep(120);
-          }
+          if (doVoice) { patchScenePhase(i, "image"); await sleep(120); }
         }
-
         const afterCast = useMovieStore.getState().movies.find((m) => m.id === movieId);
         const fills = await runWebImageAgent({
           title: result.script.title || movie.title,
           language: movie.language,
           layout: dualScreen ? "dual" : "single",
-          scenes: result.script.scenes.map((sc, order) => ({
-            id: `tmp-${order}`,
-            order,
-            title: sc.title,
-            mood: sc.mood,
-            dialogue: sc.dialogue,
-            narration: sc.narration,
-            visualPrompt: sc.visualPrompt,
-            gestureNotes: sc.gestureNotes,
-          })),
-          characters: (afterCast?.characters || []).map((c) => ({
-            id: c.id,
-            name: c.name,
-            role: c.role,
-            appearance: c.appearance,
-            referenceImageLocal: c.referenceImageLocal,
-            referenceImageUrl: c.referenceImageUrl,
-          })),
+          scenes: result.script.scenes.map((sc, order) => ({ id: `tmp-${order}`, order, title: sc.title, mood: sc.mood, dialogue: sc.dialogue, narration: sc.narration, visualPrompt: sc.visualPrompt, gestureNotes: sc.gestureNotes })),
+          characters: (afterCast?.characters || []).map((c) => ({ id: c.id, name: c.name, role: c.role, appearance: c.appearance, referenceImageLocal: c.referenceImageLocal, referenceImageUrl: c.referenceImageUrl })),
           onProgress: (msg) => setRecordStatus(msg),
         });
-
         const updated = useMovieStore.getState().movies.find((m) => m.id === movieId);
         const sorted = (updated?.scenes || []).slice().sort((a, b) => a.order - b.order);
         fills.fills.forEach((f, i) => {
@@ -292,44 +224,17 @@ export function ProducePage() {
           const patch: { imageTopLocal?: string; imageBottomLocal?: string } = {};
           if (f.imageTop) patch.imageTopLocal = f.imageTop;
           if (f.imageBottom) patch.imageBottomLocal = f.imageBottom;
-          if (patch.imageTopLocal || patch.imageBottomLocal) {
-            updateScene(movieId, sc.id, patch);
-          }
+          if (patch.imageTopLocal || patch.imageBottomLocal) updateScene(movieId, sc.id, patch);
         });
-
-        setSceneProgress((prev) =>
-          prev.map((s, i) => {
-            const fill = fills.fills[i];
-            return {
-              ...s,
-              phase: "done" as ScenePhase,
-              thumb: fill?.imageTop || s.thumb,
-              detail: fill?.primaryCharacter || fill?.source || s.detail,
-            };
-          }),
-        );
+        setSceneProgress((prev) => prev.map((s, i) => ({ ...s, phase: "done" as ScenePhase, thumb: fills.fills[i]?.imageTop || s.thumb, detail: fills.fills[i]?.primaryCharacter || fills.fills[i]?.source || s.detail })));
         setRecordStatus(fills.summary);
       } catch {
-        setRecordStatus(
-          movie.language === "hi"
-            ? "Auto-art partial — B button try करें"
-            : "Auto-art partial — try B button",
-        );
-        setSceneProgress((prev) =>
-          prev.map((s) => ({ ...s, phase: "done" as ScenePhase })),
-        );
+        setRecordStatus(movie.language === "hi" ? "Auto-art partial — B button try करें" : "Auto-art partial — try B button");
+        setSceneProgress((prev) => prev.map((s) => ({ ...s, phase: "done" as ScenePhase })));
       }
-
-      if (!headline) {
-        setHeadline(result.script.logline?.slice(0, 80) || movie.title);
-      }
+      if (!headline) setHeadline(result.script.logline?.slice(0, 80) || movie.title);
     }
-
-    if (result.storyboard?.length) {
-      setStoryboard(result.storyboard);
-      setFrameIndex(0);
-    }
-
+    if (result.storyboard?.length) { setStoryboard(result.storyboard); setFrameIndex(0); }
     setOverallPhase("stitching");
     setProgressPercent(88);
     setActiveSceneIndex(undefined);
@@ -347,11 +252,7 @@ export function ProducePage() {
     setPlayingCinema(false);
     setExporting(false);
     setRunning(false);
-    if (overallPhase !== "ready") {
-      setOverallPhase("idle");
-      setProgressPercent(0);
-      setActiveSceneIndex(undefined);
-    }
+    if (overallPhase !== "ready") { setOverallPhase("idle"); setProgressPercent(0); setActiveSceneIndex(undefined); }
   }
 
   function playStoryboard() {
@@ -380,14 +281,11 @@ export function ProducePage() {
     setCinemaCaption("");
     setRecordStatus(record ? "Recording…" : "Playing…");
     setLastExport(null);
-
     setOverallPhase("stitching");
     setProgressPercent(5);
-    if (sceneProgress.length === 0) {
-      setSceneProgress(scenesToProgressItems(movie.scenes));
-    }
-
+    if (sceneProgress.length === 0) setSceneProgress(scenesToProgressItems(movie.scenes));
     const hl = headline.trim() || movie.title;
+    const hasPhotos = movie.scenes.some((s) => s.imageTopLocal || s.imageBottomLocal || s.externalImageLocal);
     try {
       const result = await playScenesOnCanvas(
         canvas,
@@ -404,7 +302,7 @@ export function ProducePage() {
           facePerformance: facePerformance || use3dAvatar,
           layout: dualScreen ? "dual" : "single",
           use3dAvatar,
-          bodyPerformance: true,
+          bodyPerformance: (facePerformance || use3dAvatar) && !hasPhotos,
           onCaption: (cap) => setCinemaCaption(cap),
           onScene: (i) => {
             setFrameIndex(i);
@@ -425,7 +323,6 @@ export function ProducePage() {
         downloadBlob(result.blob, name);
       } else if (record) setRecordStatus("Recording failed — try Chrome/Firefox.");
       else setRecordStatus("Playback finished.");
-
       setSceneProgress((prev) => prev.map((s) => ({ ...s, phase: "done" as ScenePhase })));
       setProgressPercent(100);
       setOverallPhase("ready");
@@ -463,8 +360,10 @@ export function ProducePage() {
       <div className="mb-5 flex gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3.5 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p className="leading-relaxed">
-          <strong className="text-fg">Character Photo Mind:</strong> script cast se
-          scene photos choose karta hai + continuity.
+          <strong className="text-fg">Tip:</strong>{\" \"}
+          {movie.language === "hi"
+            ? "सिंगल स्क्रीन चुनें + B से photos auto-fill — stick figure बंद।"
+            : "Pick Single screen + B auto-fill photos — avoids stick figures."}
         </p>
       </div>
 
@@ -493,46 +392,45 @@ export function ProducePage() {
         <p className="px-1 text-xs text-muted">{pipeline.lastMessage}</p>
       </section>
 
-      {generatedClipUrl && (
-        <section className="mb-5 card-pro space-y-3 p-3">
-          <div>
-            <h2 className="text-sm font-semibold">Generated AI video clip</h2>
-            <p className="text-xs text-muted">Short silent test clip from worker</p>
-          </div>
-          <video src={generatedClipUrl} controls playsInline className="w-full rounded-xl bg-black" />
-        </section>
-      )}
+      <section className="mb-4 card-pro p-3">
+        <p className="mb-2 text-xs font-semibold">
+          {movie.language === "hi" ? "स्क्रीन लेआउट" : "Screen layout"}
+        </p>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setDualScreen(false)}
+            className={cn("flex-1 rounded-lg border py-2.5 text-xs font-semibold",
+              !dualScreen ? "border-accent bg-accent/15 text-accent" : "border-border text-muted")}>
+            {movie.language === "hi" ? "सिंगल स्क्रीन" : "Single screen"}
+          </button>
+          <button type="button" onClick={() => setDualScreen(true)}
+            className={cn("flex-1 rounded-lg border py-2.5 text-xs font-semibold",
+              dualScreen ? "border-accent bg-accent/15 text-accent" : "border-border text-muted")}>
+            {movie.language === "hi" ? "ड्यूल स्क्रीन" : "Dual screen"}
+          </button>
+        </div>
+        <p className="mt-1.5 text-[10px] text-muted">
+          {movie.language === "hi"
+            ? "सिंगल = एक फुल फ्रेम · ड्यूल = ऊपर/नीचे दो पैनल"
+            : "Single = one full frame · Dual = top/bottom panels"}
+        </p>
+      </section>
 
       <section className="mb-4 card-pro p-3">
         <p className="mb-2 text-xs font-semibold">
           {movie.language === "hi" ? "आवाज़ (कथा / पात्र)" : "Voice (narration / characters)"}
         </p>
         <div className="flex gap-2">
-          {([
-            ["auto", movie.language === "hi" ? "ऑटो" : "Auto"],
+          {([["auto", movie.language === "hi" ? "ऑटो" : "Auto"],
             ["male", movie.language === "hi" ? "पुरुष" : "Male"],
             ["female", movie.language === "hi" ? "महिला" : "Female"],
           ] as const).map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setVoiceGender(val)}
-              className={cn(
-                "flex-1 rounded-lg border py-2 text-xs font-medium",
-                voiceGender === val
-                  ? "border-accent bg-accent/15 text-accent"
-                  : "border-border text-muted",
-              )}
-            >
+            <button key={val} type="button" onClick={() => setVoiceGender(val)}
+              className={cn("flex-1 rounded-lg border py-2 text-xs font-medium",
+                voiceGender === val ? "border-accent bg-accent/15 text-accent" : "border-border text-muted")}>
               {label}
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[10px] text-muted">
-          {movie.language === "hi"
-            ? "फ्री सिस्टम TTS — Auto / Male / Female"
-            : "Free system TTS — Auto / Male / Female"}
-        </p>
       </section>
 
       <section className="mb-4 card-pro p-3">
@@ -562,15 +460,8 @@ export function ProducePage() {
         movieId={movieId}
         onImportExternal={(sceneId, dataUrl) => {
           if (!movieId) return;
-          updateScene(movieId, sceneId, {
-            externalImageLocal: dataUrl,
-            imageTopLocal: dataUrl,
-          });
-          setSceneProgress((prev) =>
-            prev.map((s) =>
-              s.id === sceneId ? { ...s, thumb: dataUrl, phase: "done" as ScenePhase } : s,
-            ),
-          );
+          updateScene(movieId, sceneId, { externalImageLocal: dataUrl, imageTopLocal: dataUrl });
+          setSceneProgress((prev) => prev.map((s) => s.id === sceneId ? { ...s, thumb: dataUrl, phase: "done" as ScenePhase } : s));
         }}
         onApplyImages={(fills) => {
           if (!movieId) return;
@@ -580,76 +471,24 @@ export function ProducePage() {
             if (f.imageBottom) patch.imageBottomLocal = f.imageBottom;
             if (patch.imageTopLocal || patch.imageBottomLocal) updateScene(movieId, f.sceneId, patch);
           }
-          setSceneProgress((prev) =>
-            prev.map((s) => {
-              const fill = fills.find((x) => x.sceneId === s.id);
-              if (!fill) return s;
-              return {
-                ...s,
-                thumb: fill.imageTop || s.thumb,
-                phase: "done" as ScenePhase,
-                detail: fill.primaryCharacter || s.detail,
-              };
-            }),
-          );
+          setSceneProgress((prev) => prev.map((s) => {
+            const fill = fills.find((x) => x.sceneId === s.id);
+            if (!fill) return s;
+            return { ...s, thumb: fill.imageTop || s.thumb, phase: "done" as ScenePhase, detail: fill.primaryCharacter || s.detail };
+          }));
         }}
         movie={{
           title: movie.title,
           language: movie.language,
-          scenes: sortedScenes.map((s) => ({
-            id: s.id,
-            order: s.order,
-            title: s.title,
-            mood: s.mood,
-            dialogue: s.dialogue,
-            narration: s.narration,
-            visualPrompt: s.visualPrompt,
-            gestureNotes: s.gestureNotes,
-          })),
-          characters: movie.characters.map((c) => ({
-            id: c.id,
-            name: c.name,
-            role: c.role,
-            appearance: c.appearance,
-            referenceImageLocal: c.referenceImageLocal,
-            referenceImageUrl: c.referenceImageUrl,
-          })),
+          scenes: sortedScenes.map((s) => ({ id: s.id, order: s.order, title: s.title, mood: s.mood, dialogue: s.dialogue, narration: s.narration, visualPrompt: s.visualPrompt, gestureNotes: s.gestureNotes })),
+          characters: movie.characters.map((c) => ({ id: c.id, name: c.name, role: c.role, appearance: c.appearance, referenceImageLocal: c.referenceImageLocal, referenceImageUrl: c.referenceImageUrl })),
         }}
       />
 
-      {sortedScenes.length > 0 && (
-        <section className="mb-4 space-y-2">
-          <h2 className="text-sm font-semibold">Scene art {dualScreen ? "(dual)" : "(single)"}</h2>
-          {sortedScenes.map((sc) => (
-            <div key={sc.id} className="card-pro space-y-2 p-3">
-              <p className="text-xs font-medium">{sc.order + 1}. {sc.title}</p>
-              <div className="flex gap-2">
-                {(["top", "bottom"] as const).filter((slot) => dualScreen || slot === "top").map((slot) => (
-                  <label key={slot} className="flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-lg border border-dashed border-border px-2 py-3 text-[10px] text-muted hover:border-accent/40">
-                    <ImagePlus className="h-4 w-4" />
-                    {slot}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => onSceneImage(sc.id, slot, e.target.files?.[0] || null)}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
-
       <section className="mb-4 card-pro overflow-hidden">
         <canvas ref={canvasRef} className="mx-auto block w-full max-w-[360px] bg-black" width={360} height={450} />
-        {cinemaCaption && (
-          <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">{cinemaCaption}</p>
-        )}
-        {recordStatus && (
-          <p className="border-t border-border px-3 py-2 text-center text-xs text-amber-400">{recordStatus}</p>
-        )}
+        {cinemaCaption && <p className="border-t border-border px-3 py-2 text-center text-xs text-muted">{cinemaCaption}</p>}
+        {recordStatus && <p className="border-t border-border px-3 py-2 text-center text-xs text-amber-400">{recordStatus}</p>}
         <div className="flex flex-wrap gap-2 border-t border-border p-3">
           <button type="button" disabled={busy} onClick={() => runCinematic(false)}
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-card px-3 py-2.5 text-sm font-medium border border-border disabled:opacity-50">
@@ -667,23 +506,6 @@ export function ProducePage() {
         )}
       </section>
 
-      {storyboard.length > 0 && (
-        <section className="mb-4 card-pro p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Storyboard</h2>
-            <button type="button" onClick={playStoryboard} disabled={playingBoard} className="text-xs text-accent">
-              {playingBoard ? "Playing…" : "Play frames"}
-            </button>
-          </div>
-          {frame && (
-            <div className="rounded-lg border border-border bg-black/40 p-3 text-xs">
-              <p className="font-medium text-fg">{frame.title}</p>
-              <p className="mt-1 text-muted">{frame.subtitle}</p>
-            </div>
-          )}
-        </section>
-      )}
-
       <section className="fixed bottom-0 left-0 right-0 border-t border-border bg-bg/95 px-4 py-3 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
         <div className="mx-auto flex max-w-lg gap-2 sm:max-w-2xl">
           <button type="button" onClick={stopAll} disabled={!busy}
@@ -696,13 +518,6 @@ export function ProducePage() {
             {running ? "Producing…" : "Run production pipeline"}
           </button>
         </div>
-        <ul className="mx-auto mt-2 hidden max-w-lg text-[10px] text-muted sm:block sm:max-w-2xl">
-          {catalog.map((c) => (
-            <li key={c.id} className="flex items-center gap-1">
-              <ChevronRight className="h-3 w-3" /> {c.name}: {c.freeNow ? "free" : "upgrade"}
-            </li>
-          ))}
-        </ul>
       </section>
     </main>
   );
