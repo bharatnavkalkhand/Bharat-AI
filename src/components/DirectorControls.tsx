@@ -12,6 +12,10 @@ import {
   type ImageCandidate,
 } from "@/agents/web-image-agent";
 import { runRenderWorker } from "@/agents/render-worker";
+import {
+  runGrokImagineAgent,
+  getImagineStatus,
+} from "@/agents/grok-imagine-agent";
 import type { MotionIntensity } from "@/agents/motion-engine";
 
 export interface DirectorControlsProps {
@@ -83,6 +87,8 @@ export function DirectorControls({
   const [lastFills, setLastFills] = useState<SceneImageFill[]>([]);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [imagineBusy, setImagineBusy] = useState(false);
+  const [imagineReady, setImagineReady] = useState<boolean | null>(null);
 
   async function runDirector() {
     if (!movie.scenes.length) {
@@ -142,6 +148,48 @@ export function DirectorControls({
       onStatus?.(e instanceof Error ? e.message : "Web image fill failed");
     } finally {
       setFillBusy(false);
+    }
+  }
+
+  async function runGrokImagineFill() {
+    if (!movie.scenes.length) {
+      onStatus?.("Add scenes first.");
+      return;
+    }
+    setImagineBusy(true);
+    onStatus?.(
+      movie.language === "hi"
+        ? "Grok Imagine frames…"
+        : "Grok Imagine generating frames…",
+    );
+    try {
+      const status = await getImagineStatus();
+      setImagineReady(status.configured);
+      if (!status.configured) {
+        onStatus?.(
+          movie.language === "hi"
+            ? "XAI_API_KEY Vercel me set karein (paid). Abhi free B use karein."
+            : "Set XAI_API_KEY in Vercel (paid). Use free B for now.",
+        );
+        return;
+      }
+      const layout: ScreenLayout = dualScreen ? "dual" : "single";
+      const result = await runGrokImagineAgent({
+        title: movie.title,
+        language: movie.language,
+        layout,
+        scenes: movie.scenes,
+        maxScenes: 6,
+        onProgress: (msg) => onStatus?.(msg),
+      });
+      setLastFills(result.fills);
+      if (result.fills[0]) setActiveSceneId(result.fills[0].sceneId);
+      onApplyImages?.(result.fills);
+      onStatus?.(result.summary);
+    } catch (e) {
+      onStatus?.(e instanceof Error ? e.message : "Grok Imagine failed");
+    } finally {
+      setImagineBusy(false);
     }
   }
 
@@ -223,14 +271,14 @@ export function DirectorControls({
     reader.readAsDataURL(file);
   }
 
-  const disabled = busy || fillBusy || workerBusy || !movie.scenes.length;
+  const disabled = busy || fillBusy || workerBusy || imagineBusy || !movie.scenes.length;
   const activeFill =
     lastFills.find((f) => f.sceneId === activeSceneId) || lastFills[0];
 
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-3">
       <p className="mb-2 text-xs font-semibold text-fg">
-        A · B · C — Worker · Character Mind art · Import frames
+        A · B · G · C — Worker · Free art · Grok Imagine · Import
       </p>
 
       <label className="flex items-center gap-2 text-xs font-medium">
@@ -288,6 +336,19 @@ export function DirectorControls({
         {fillBusy
           ? "Character Mind searching…"
           : "B · Auto-fill by script characters (free sources)"}
+      </button>
+
+      <button
+        type="button"
+        disabled={disabled}
+        className="mt-2 w-full rounded-lg border border-violet-500/50 bg-violet-500/15 py-2.5 text-xs font-semibold text-violet-300 disabled:opacity-40"
+        onClick={runGrokImagineFill}
+      >
+        {imagineBusy
+          ? "Grok Imagine…"
+          : imagineReady === false
+            ? "G · Grok Imagine (set XAI_API_KEY)"
+            : "G · Grok Imagine frames (xAI API)"}
       </button>
 
       <button
