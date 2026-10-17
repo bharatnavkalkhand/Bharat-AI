@@ -75,6 +75,8 @@ export const SceneSchema = z.object({
   /** C — external AI frame/clip from ReelShorts etc. */
   externalImageLocal: z.string().optional(),
   externalVideoLocal: z.string().optional(),
+  /** Phone/PC imported dialogue audio (data URL) — VoiceStudio / CapCut / etc. */
+  audioLocal: z.string().optional(),
 });
 export type Scene = z.infer<typeof SceneSchema>;
 
