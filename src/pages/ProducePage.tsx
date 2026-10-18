@@ -494,18 +494,12 @@ export function ProducePage() {
         onDualScreenChange={setDualScreen}
         facePerformance={facePerformance}
         onFacePerformanceChange={setFacePerformance}
+        onMotionHint={setMotionIntensity}
+        onStatus={setRecordStatus}
         use3dAvatar={use3dAvatar}
         on3dAvatarChange={setUse3dAvatar}
-        motionIntensity={motionIntensity}
-        onMotionIntensityChange={setMotionIntensity}
-        voiceGender={voiceGender}
-        onVoiceGenderChange={setVoiceGender}
-        doVoice={doVoice}
-        onDoVoiceChange={setDoVoice}
-        headline={headline}
-        onHeadlineChange={setHeadline}
-        language={movie.language}
         movie={movie}
+        movieId={movie.id}
         onApplyImages={(fills) => {
           fills.forEach((f) => {
             const patch: { imageTopLocal?: string; imageBottomLocal?: string } = {};
