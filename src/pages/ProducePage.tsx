@@ -30,6 +30,7 @@ import {
 } from "@/agents/visual-binder";
 import type { MotionIntensity } from "@/agents/motion-engine";
 import { DirectorControls } from "@/components/DirectorControls";
+import { ExternalStudioPanel } from "@/components/ExternalStudioPanel";
 import {
   SceneProgressPanel,
   scenesToProgressItems,
@@ -432,8 +433,8 @@ export function ProducePage() {
         <p className="leading-relaxed">
           <strong className="text-fg">Tip:</strong>{" "}
           {movie.language === "hi"
-            ? "सिंगल स्क्रीन + आवाज़। Phone: नीचे scene audio import (VoiceStudio/CapCut mp3)।"
-            : "Single screen + Voice. Phone: import scene audio below (VoiceStudio/CapCut mp3)."}
+            ? "Civitai/Roar panel se still+video design → Import. Audio alag se."
+            : "Use Civitai/Roar panel for stills+video → Import. Audio separately."}
         </p>
       </div>
 
@@ -551,9 +552,7 @@ export function ProducePage() {
       </section>
 
       <section className="mb-4 card-pro p-3">
-        <p className="mb-1 text-xs font-semibold">
-          {movie.language === "hi" ? "Scene audio import (phone)" : "Scene audio import (phone)"}
-        </p>
+        <p className="mb-1 text-xs font-semibold">Scene audio import (phone)</p>
         <p className="mb-2 text-[10px] text-muted">
           {movie.language === "hi"
             ? "PC pe VoiceStudio clone → mp3 phone pe bhejo → yahan scene pe lagaao. Max ~2.5MB/scene."
@@ -573,9 +572,7 @@ export function ProducePage() {
                 <span className="w-5 shrink-0 text-[10px] font-bold text-muted">{i + 1}</span>
                 <span className="min-w-0 flex-1 truncate text-xs">{sc.title}</span>
                 {sc.audioLocal ? (
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-400">
-                    audio ✓
-                  </span>
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-400">audio ✓</span>
                 ) : (
                   <span className="text-[10px] text-muted">TTS</span>
                 )}
@@ -593,11 +590,7 @@ export function ProducePage() {
                   />
                 </label>
                 {sc.audioLocal && (
-                  <button
-                    type="button"
-                    className="text-[10px] text-muted underline"
-                    onClick={() => clearSceneAudio(sc.id)}
-                  >
+                  <button type="button" className="text-[10px] text-muted underline" onClick={() => clearSceneAudio(sc.id)}>
                     clear
                   </button>
                 )}
@@ -606,6 +599,21 @@ export function ProducePage() {
           </ul>
         )}
       </section>
+
+      <ExternalStudioPanel
+        language={movie.language}
+        movieTitle={movie.title}
+        scenes={sortedScenes}
+        characters={movie.characters}
+        onStatus={setRecordStatus}
+        onImportVideo={(sceneId, dataUrl) => {
+          if (!movieId) return;
+          updateScene(movieId, sceneId, { externalVideoLocal: dataUrl });
+          setRecordStatus(
+            movie.language === "hi" ? "External video scene pe set" : "External video set on scene",
+          );
+        }}
+      />
 
       <DirectorControls
         dualScreen={dualScreen}
@@ -678,11 +686,7 @@ export function ProducePage() {
           </button>
         </div>
         {lastExport && (
-          <button
-            type="button"
-            onClick={redownload}
-            className="w-full border-t border-border py-2 text-xs text-accent"
-          >
+          <button type="button" onClick={redownload} className="w-full border-t border-border py-2 text-xs text-accent">
             Re-download {lastExport.name}
           </button>
         )}
