@@ -205,6 +205,8 @@ export function MovieWorkspacePage() {
                     : `Scene ${movie.scenes.length + 1}`,
                 mood: "dialogue",
                 dialogue: "",
+                status: "draft",
+                characterIds: [],
               });
             }}
           >
