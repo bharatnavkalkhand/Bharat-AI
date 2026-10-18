@@ -13,7 +13,7 @@ import {
   Download,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
-import { runMoviePipeline, getAgentCatalog } from "@/agents/orchestrator";
+import { runMoviePipeline } from "@/agents/orchestrator";
 import { stopVoice } from "@/agents/voice-agent";
 import type { StoryboardFrame } from "@/agents/video-agent";
 import type { AgentStageStatus, PipelineState } from "@/agents/types";
@@ -25,7 +25,6 @@ import {
 } from "@/agents/scene-player";
 import {
   bindScenesForPlayer,
-  readImageAsDataUrl,
   readAudioAsDataUrl,
 } from "@/agents/visual-binder";
 import type { MotionIntensity } from "@/agents/motion-engine";
@@ -76,7 +75,7 @@ export function ProducePage() {
   });
   const [running, setRunning] = useState(false);
   const [storyboard, setStoryboard] = useState<StoryboardFrame[]>([]);
-  const [frameIndex, setFrameIndex] = useState(0);
+  const [, setFrameIndex] = useState(0);
   const [playingCinema, setPlayingCinema] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [cinemaCaption, setCinemaCaption] = useState("");
@@ -391,7 +390,7 @@ export function ProducePage() {
   }
 
   async function onSceneAudioFile(sceneId: string, file: File | null) {
-    if (!movieId || !file) return;
+    if (!movieId || !file || !movie) return;
     try {
       const dataUrl = await readAudioAsDataUrl(file);
       updateScene(movieId, sceneId, { audioLocal: dataUrl });
@@ -627,6 +626,12 @@ export function ProducePage() {
         workerUrl={workerUrl}
         onWorkerUrlChange={setWorkerUrl}
         movieId={movieId}
+        movie={{
+          title: movie.title,
+          language: movie.language,
+          scenes: sortedScenes,
+          characters: movie.characters,
+        }}
         onImportExternal={(sceneId, dataUrl) => {
           if (!movieId) return;
           updateScene(movieId, sceneId, { externalImageLocal: dataUrl, imageTopLocal: dataUrl });
