@@ -50,12 +50,10 @@ export async function runMoviePipeline(
   let videoRes: AgentRunResult | undefined;
   let storyboard: StoryboardFrame[] | undefined;
 
-  // —— SCRIPT ——
   if (stages.script) {
     pipeline.script = "running";
     cb?.onStage?.("script", "running", "Script Agent writing…");
     try {
-      // Optional: call /api/agents/script if cloud LLM configured
       let usedCloud = false;
       if (input.options?.useCloudLlm) {
         try {
@@ -99,7 +97,6 @@ export async function runMoviePipeline(
     pipeline.script = "skipped";
   }
 
-  // Merge generated scenes into input for downstream agents
   const enriched: AgentRunInput = scriptOut
     ? (() => {
         const characters = scriptOut.characters.map((character, i) => ({
@@ -133,11 +130,10 @@ export async function runMoviePipeline(
       })()
     : input;
 
-  // —— VOICE ——
   if (stages.voice) {
     pipeline.voice = "running";
     cb?.onStage?.("voice", "running", "Voice Agent narrating…");
-    voiceRes = await runVoiceAgent(enriched, cb?.onNarrationLine);
+    voiceRes = await runVoiceAgent(enriched);
     pipeline.voice = voiceRes.status;
     pipeline.lastMessage = voiceRes.message;
     cb?.onStage?.("voice", voiceRes.status, voiceRes.message);
@@ -145,7 +141,6 @@ export async function runMoviePipeline(
     pipeline.voice = "skipped";
   }
 
-  // —— VIDEO ——
   if (stages.video) {
     pipeline.video = "running";
     cb?.onStage?.("video", "running", "Video Agent building preview…");
