@@ -458,20 +458,6 @@ export function pickRecorderMime(): {
   return { mimeType: "video/webm", extension: "webm" };
 }
 
-async function decodeAudioUrl(
-  url: string,
-  ctx: AudioContext,
-): Promise<{ buffer: AudioBuffer; durationSec: number } | null> {
-  try {
-    const res = await fetch(url);
-    const arr = await res.arrayBuffer();
-    const buffer = await ctx.decodeAudioData(arr.slice(0));
-    return { buffer, durationSec: buffer.duration };
-  } catch {
-    return null;
-  }
-}
-
 function playHtmlAudio(url: string): {
   el: HTMLAudioElement;
   done: Promise<void>;
@@ -762,7 +748,9 @@ export async function playScenesOnCanvas(
 
     if (sc.audioUrl) {
       const caption =
-        (sc.dialogue || sc.narration || sc.title || "").split("\n")[0].slice(0, 120);
+        (sc.dialogue || sc.narration || sc.title || "")
+          .split("\n")[0]
+          .slice(0, 120);
       options.onCaption?.(caption);
       const start = performance.now();
       const { done } = playHtmlAudio(sc.audioUrl);
