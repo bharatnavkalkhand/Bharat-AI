@@ -4,6 +4,7 @@ export interface GeneratedCharacter {
   name: string;
   role: string;
   appearance: string;
+  personality?: string;
 }
 
 export interface GeneratedScene {
@@ -42,7 +43,6 @@ function isRamayanaStory(text: string): boolean {
   );
 }
 
-/** Split long prose into ordered story beats for scenes */
 function splitBeats(idea: string, n: number): string[] {
   const cleaned = idea.replace(/\s+/g, " ").trim();
   if (!cleaned) return Array.from({ length: n }, (_, i) => `Beat ${i + 1}`);
@@ -55,7 +55,6 @@ function splitBeats(idea: string, n: number): string[] {
     }
     return out;
   }
-  // pad
   const out = [...sentences];
   while (out.length < n) out.push(out[out.length - 1] || cleaned);
   return out.slice(0, n);
@@ -182,17 +181,12 @@ export function generateScript(input: {
       }
       if (i === 0) narration = `The story begins where ${beat.slice(0, 80)}`;
     }
-    const visualPrompt = [
-      beat.slice(0, 100),
-      `${hero} and ${love}`,
-      mood,
-      "cinematic film still, clear faces",
-    ].join(", ");
+    const visualPrompt = [beat.slice(0, 100), `${hero} and ${love}`, mood, "cinematic film still, clear faces"].join(", ");
     return {
       title:
         language === "hi"
-          ? [`शुरुआत`, `मोड़`, `संघर्ष`, `प्रेम`, `संकल्प`, `अंत`][i] || `दृश्य ${i + 1}`
-          : [`Opening`, `Turn`, `Conflict`, `Bond`, `Resolve`, `Close`][i] || `Scene ${i + 1}`,
+          ? (["शुरुआत", "मोड़", "संघर्ष", "प्रेम", "संकल्प", "अंत"][i] || `दृश्य ${i + 1}`)
+          : (["Opening", "Turn", "Conflict", "Bond", "Resolve", "Close"][i] || `Scene ${i + 1}`),
       mood,
       dialogue,
       narration: narration || undefined,
@@ -224,20 +218,7 @@ export function generateScript(input: {
               : "5 min"
         }.`;
 
-  const fullScriptText = buildFullScript({
-    title,
-    logline,
-    characters,
-    scenes,
-    language,
-  });
+  const fullScriptText = buildFullScript({ title, logline, characters, scenes, language });
 
-  return {
-    title,
-    logline,
-    synopsis,
-    characters,
-    scenes,
-    fullScriptText,
-  };
+  return { title, logline, synopsis, characters, scenes, fullScriptText };
 }
