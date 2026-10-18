@@ -21,17 +21,25 @@ export interface InvertedScenePrompt {
   negativePrompt: string;
   /** Roar.art / Img2Vid motion line */
   motionPrompt: string;
+  /** Combined prompt for Civitai video generate (text-to-video) */
+  videoPrompt: string;
   /** Short tags for Civitai search */
   searchTags: string[];
   /** Ranked still search queries */
   searchQueries: string[];
   civitaiImagesUrl: string;
   civitaiVideosUrl: string;
+  /** Open Civitai on-site generator (user pastes prompt) */
+  civitaiGenerateUrl: string;
   roarVideoUrl: string;
 }
 
 const NEGATIVE =
   "blurry, low quality, watermark, text, logo, extra limbs, deformed face, cropped head, dual heads, bad anatomy, jpeg artifacts";
+
+function encodeQuery(q: string): string {
+  return encodeURIComponent(q.slice(0, 120));
+}
 
 function moodMotion(mood: string): string {
   const m = mood.toLowerCase();
@@ -65,30 +73,25 @@ function tagsFromScene(sc: Scene, chars: Character[]): string[] {
     .join(" ")
     .toLowerCase();
 
-  if (/राम|rama|सीता|sita|हनुमान|hanuman|रावण|ayodhya|वन/.test(blob)) {
+  if (/राम|rama|सीता|sita|हनुमान|hanuman/.test(blob)) {
     tags.add("ramayana");
-    tags.add("mythology");
-    tags.add("india");
+    tags.add("hindu mythology");
   }
-  if (/elephant|हाथी|गज/.test(blob)) {
-    tags.add("elephant");
-    tags.add("forest");
+  if (/ताज|taj|जमशेद|jamsetji|colonial|मुंबई/.test(blob)) {
+    tags.add("historical india");
+    tags.add("colonial mumbai");
   }
-  if (/city|शहर|office|train/.test(blob)) tags.add("urban");
-  if (sc.mood === "fight" || sc.mood === "action") tags.add("action");
-  if (sc.mood === "romance") tags.add("romance");
-  if (sc.mood === "emotional" || sc.mood === "dramatic") tags.add("drama");
-
+  if (/romance|प्रेम|बारिश|rain|umbrella/.test(blob)) {
+    tags.add("romance");
+    tags.add("monsoon");
+  }
+  if (sc.mood) tags.add(sc.mood);
   for (const c of chars.slice(0, 3)) {
-    if (c.name) tags.add(c.name.split(/\s+/)[0]!);
+    if (c.name) tags.add(c.name);
   }
-
   tags.add("cinematic");
-  return [...tags].slice(0, 8);
-}
-
-function encodeQuery(q: string): string {
-  return encodeURIComponent(q.trim().slice(0, 80));
+  tags.add("9:16");
+  return [...tags].slice(0, 10);
 }
 
 /**
@@ -102,8 +105,8 @@ export function invertScenePrompt(
     language?: "en" | "hi";
   },
 ): InvertedScenePrompt {
-  const characters = opts?.characters ?? [];
-  const assigned = sc.characterIds
+  const characters = opts?.characters || [];
+  const assigned = (sc.characterIds || [])
     .map((id) => characters.find((c) => c.id === id))
     .filter((c): c is Character => Boolean(c));
   const castLine = assigned
@@ -144,6 +147,15 @@ export function invertScenePrompt(
     .join(", ")
     .slice(0, 280);
 
+  // Single paste-ready prompt for Civitai on-site video gen (Wan / LTX)
+  const videoPrompt = [
+    imagePrompt,
+    `motion: ${motionPrompt}`,
+    "cinematic, photoreal, clear faces, 9:16 vertical",
+  ]
+    .join(". ")
+    .slice(0, 1100);
+
   const searchTags = tagsFromScene(sc, assigned.length ? assigned : characters);
   const primaryQ = searchQueries[0] || sc.title || "cinematic";
 
@@ -155,10 +167,12 @@ export function invertScenePrompt(
     imagePrompt,
     negativePrompt: NEGATIVE,
     motionPrompt,
+    videoPrompt,
     searchTags,
     searchQueries,
     civitaiImagesUrl: `https://civitai.com/images?query=${encodeQuery(primaryQ)}`,
     civitaiVideosUrl: `https://civitai.com/videos?query=${encodeQuery(searchTags.slice(0, 4).join(" ") || primaryQ)}`,
+    civitaiGenerateUrl: "https://civitai.com/generate",
     roarVideoUrl: "https://roar.art/video",
   };
 }
