@@ -21,6 +21,7 @@ const INTENSITY = {
 
 /**
  * Motion at time t — always some movement so frames never feel static.
+ * Romance uses slow cinematic push-in + drift (Ken Burns style).
  */
 export function motionAt(
   mood: string,
@@ -45,16 +46,20 @@ export function motionAt(
       swayX: 8 * k * Math.sin(t * 7),
     };
   }
+
+  // Romance / emotional — slow Ken Burns: continuous zoom-in + soft drift
   if (m === "romance" || m === "emotional") {
+    const push = Math.min(1, t / 8); // progressive 8s push
     return {
-      zoom: 1 + 0.05 * k + 0.03 * k * Math.sin(t * 0.9) + breath,
-      panX: 12 * k * Math.sin(t * 0.45) + sway * 0.5,
-      panY: -6 * k * Math.sin(t * 0.35) + bob * 0.6,
-      rot: 0.25 * k * Math.sin(t * 0.7),
-      bobY: 2.5 * k * Math.sin(t * 1.6),
-      swayX: 3 * k * Math.sin(t * 1.2),
+      zoom: 1.06 + 0.14 * k * push + 0.02 * k * Math.sin(t * 0.55) + breath,
+      panX: 10 * k * Math.sin(t * 0.28) + 4 * k * Math.sin(t * 0.11),
+      panY: -8 * k * push + 3 * k * Math.sin(t * 0.22),
+      rot: 0.18 * k * Math.sin(t * 0.4),
+      bobY: 1.8 * k * Math.sin(t * 1.1),
+      swayX: 2.2 * k * Math.sin(t * 0.85),
     };
   }
+
   if (m === "gesture" || m === "dramatic") {
     return {
       zoom: 1 + 0.08 * k * Math.min(1.2, t / 2.5) + breath,
@@ -65,6 +70,7 @@ export function motionAt(
       swayX: 5 * k * Math.sin(t * 1.8),
     };
   }
+
   // dialogue / default — slow push + living sway
   return {
     zoom: 1 + 0.06 * k * Math.min(1.1, t / 3.5) + breath,
