@@ -50,7 +50,7 @@ export function CreateMoviePage() {
     try {
       const movie = createMovie({
         title: title.trim() || (ui === "hi" ? "नई मूवी" : "New Movie"),
-        synopsis: idea.trim(),
+        idea: idea.trim(),
         language: ui,
         targetDuration: duration,
         genres: styles,
