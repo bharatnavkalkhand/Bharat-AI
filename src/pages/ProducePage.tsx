@@ -81,7 +81,7 @@ export function ProducePage() {
   const [cinemaCaption, setCinemaCaption] = useState("");
   const [recordStatus, setRecordStatus] = useState("");
   const [lastExport, setLastExport] = useState<{ blob: Blob; extension: "webm" | "mp4"; name: string } | null>(null);
-  const [workerUrl, setWorkerUrl] = useState(
+  const [workerUrl] = useState(
     () => (typeof localStorage !== "undefined" && localStorage.getItem("bharat_video_worker_url")) || "",
   );
   const [doScript] = useState(true);
@@ -327,9 +327,6 @@ export function ProducePage() {
     if (sceneProgress.length === 0) setSceneProgress(scenesToProgressItems(movie.scenes));
 
     const hl = headline.trim() || movie.title;
-    const hasPhotos = movie.scenes.some(
-      (s) => s.imageTopLocal || s.imageBottomLocal || s.externalImageLocal,
-    );
 
     try {
       const result = await playScenesOnCanvas(
@@ -498,7 +495,7 @@ export function ProducePage() {
         facePerformance={facePerformance}
         onFacePerformanceChange={setFacePerformance}
         use3dAvatar={use3dAvatar}
-        onUse3dAvatarChange={setUse3dAvatar}
+        on3dAvatarChange={setUse3dAvatar}
         motionIntensity={motionIntensity}
         onMotionIntensityChange={setMotionIntensity}
         voiceGender={voiceGender}
