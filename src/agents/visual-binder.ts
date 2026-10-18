@@ -12,7 +12,7 @@ export function bindScenesForPlayer(
 ): PlayerScene[] {
   const sorted = [...scenes].sort((a, b) => a.order - b.order);
   const defaultPack = assignDefaultFaces(
-    characters.map((c) => ({ name: c.name, role: c.role })),
+    characters.map((c) => ({ name: c.name, role: c.role || "" })),
   );
   const faces = characters
     .map((c, i) => c.referenceImageLocal || c.referenceImageUrl || defaultPack[i])
