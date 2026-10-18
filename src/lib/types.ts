@@ -5,7 +5,8 @@ import { z } from "zod";
 export const LanguageSchema = z.enum(["en", "hi"]);
 export type Language = z.infer<typeof LanguageSchema>;
 
-export const MovieDurationSchema = z.enum(["5min", "10min"]);
+/** 10sec = short demo reel; 5min/10min = longer story plans */
+export const MovieDurationSchema = z.enum(["10sec", "5min", "10min"]);
 export type MovieDuration = z.infer<typeof MovieDurationSchema>;
 
 export const SceneMoodSchema = z.enum([
@@ -69,13 +70,10 @@ export const SceneSchema = z.object({
   audioUrl: z.string().optional(),
   errorMessage: z.string().optional(),
   characterIds: z.array(z.string()).default([]),
-  /** Dual-panel art (data URLs) */
   imageTopLocal: z.string().optional(),
   imageBottomLocal: z.string().optional(),
-  /** C — external AI frame/clip from ReelShorts etc. */
   externalImageLocal: z.string().optional(),
   externalVideoLocal: z.string().optional(),
-  /** Phone/PC imported dialogue audio (data URL) — VoiceStudio / CapCut / etc. */
   audioLocal: z.string().optional(),
 });
 export type Scene = z.infer<typeof SceneSchema>;
@@ -155,4 +153,11 @@ export function moodToPromptHint(mood: SceneMood): string {
     default:
       return "cinematic composition, clear characters, film still quality";
   }
+}
+
+/** Total target seconds for a duration preset */
+export function durationToSeconds(d: MovieDuration): number {
+  if (d === "10sec") return 10;
+  if (d === "10min") return 600;
+  return 300;
 }
