@@ -36,11 +36,11 @@ export function CreateMoviePage() {
   function applyTemplate(idx: number) {
     const tpl = BHARAT_TEMPLATES[idx];
     if (!tpl) return;
-    setTitle(tpl.title);
-    setIdea(tpl.idea);
-    setDuration(tpl.duration === "10min" ? "10min" : tpl.duration === "10sec" ? "10sec" : "5min");
-    setStyles(tpl.genres || ["drama"]);
     setUi(tpl.language || "hi");
+    setTitle(tpl.language === "hi" ? tpl.titleHi : tpl.titleEn);
+    setIdea(tpl.language === "hi" ? tpl.ideaHi : tpl.ideaEn);
+    setDuration(tpl.duration);
+    setStyles(tpl.genres || ["drama"]);
   }
 
   async function submit(oneClick: boolean) {
@@ -196,12 +196,12 @@ export function CreateMoviePage() {
         <div className="flex flex-wrap gap-2">
           {BHARAT_TEMPLATES.slice(0, 6).map((tpl, i) => (
             <button
-              key={tpl.title}
+              key={tpl.id}
               type="button"
               onClick={() => applyTemplate(i)}
               className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-muted hover:border-accent/40"
             >
-              {tpl.title.slice(0, 28)}
+              {(ui === "hi" ? tpl.titleHi : tpl.titleEn).slice(0, 28)}
             </button>
           ))}
         </div>
