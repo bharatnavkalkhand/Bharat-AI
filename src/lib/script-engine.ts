@@ -43,6 +43,12 @@ function isRamayanaStory(text: string): boolean {
   );
 }
 
+function isTajStory(text: string): boolean {
+  return /ताज|तज|jamsetji|jamsetjee|जमशेद|taj mahal|hotel|औपनिवेश|colonial|मुंबई|mumbai|guard|गार्ड/i.test(
+    text,
+  );
+}
+
 function splitBeats(idea: string, n: number): string[] {
   const cleaned = idea.replace(/\s+/g, " ").trim();
   if (!cleaned) return Array.from({ length: n }, (_, i) => `Beat ${i + 1}`);
@@ -51,7 +57,9 @@ function splitBeats(idea: string, n: number): string[] {
     const out: string[] = [];
     const size = Math.ceil(sentences.length / n);
     for (let i = 0; i < n; i++) {
-      out.push(sentences.slice(i * size, (i + 1) * size).join(" ") || `Beat ${i + 1}`);
+      out.push(
+        sentences.slice(i * size, (i + 1) * size).join(" ") || `Beat ${i + 1}`,
+      );
     }
     return out;
   }
@@ -63,36 +71,130 @@ function splitBeats(idea: string, n: number): string[] {
 function defaultCast(language: Language): GeneratedCharacter[] {
   if (language === "hi") {
     return [
-      { name: "अरजुन", role: "नायक", appearance: "दृढ़ नज़र, साधारण लेकिन मजबूत कपड़े, भावपूर्ण चेहरा" },
-      { name: "मीरा", role: "प्रेमिका", appearance: "कोमल मुस्कान, साफ पहनावा, भावुक आँखें" },
-      { name: "विक्रम", role: "प्रतिद्वंद्वी", appearance: "तीखी नज़र, काले कपड़े, आक्रामक हावभाव" },
+      {
+        name: "अरजुन",
+        role: "नायक",
+        appearance: "दृढ़ नज़र, साधारण लेकिन मजबूत कपड़े, भावपूर्ण चेहरा",
+      },
+      {
+        name: "मीरा",
+        role: "प्रेमिका",
+        appearance: "कोमल मुस्कान, साफ पहनावा, भावुक आँखें",
+      },
+      {
+        name: "विक्रम",
+        role: "प्रतिद्वंद्वी",
+        appearance: "तीखी नज़र, काले कपड़े, आक्रामक हावभाव",
+      },
     ];
   }
   return [
-    { name: "Arjun", role: "Hero", appearance: "Steady gaze, simple strong clothes, expressive face" },
-    { name: "Meera", role: "Love interest", appearance: "Soft smile, clean attire, emotional eyes" },
-    { name: "Vikram", role: "Rival", appearance: "Sharp look, dark clothes, aggressive posture" },
+    {
+      name: "Arjun",
+      role: "Hero",
+      appearance: "Steady gaze, simple strong clothes, expressive face",
+    },
+    {
+      name: "Meera",
+      role: "Love interest",
+      appearance: "Soft smile, clean attire, emotional eyes",
+    },
+    {
+      name: "Vikram",
+      role: "Rival",
+      appearance: "Sharp look, dark clothes, aggressive posture",
+    },
   ];
 }
 
 function ramayanaCast(language: Language): GeneratedCharacter[] {
   if (language === "hi") {
     return [
-      { name: "श्री राम", role: "नायक", appearance: "नीला वर्ण, पीला धोती, धनुष, शांत किन्तु दृढ़ मुख" },
-      { name: "हाथी", role: "गज", appearance: "विशाल हाथी, जंगल में, माथा ऊँचा" },
-      { name: "हाथिनी", role: "संगिनी", appearance: "सफेद-धूसर हाथिनी, जल के पास" },
+      {
+        name: "श्री राम",
+        role: "नायक",
+        appearance: "नीला वर्ण, पीला धोती, धनुष, शांत किन्तु दृढ़ मुख",
+      },
+      {
+        name: "हाथी",
+        role: "गज",
+        appearance: "विशाल हाथी, जंगल में, माथा ऊँचा",
+      },
+      {
+        name: "हाथिनी",
+        role: "संगिनी",
+        appearance: "सफेद-धूसर हाथिनी, जल के पास",
+      },
     ];
   }
   return [
-    { name: "Lord Rama", role: "Hero", appearance: "Blue skin, yellow dhoti, bow, calm firm face" },
-    { name: "Elephant", role: "Gaja", appearance: "Great bull elephant in forest, raised head" },
-    { name: "Cow elephant", role: "Companion", appearance: "Grey-white cow elephant near water" },
+    {
+      name: "Lord Rama",
+      role: "Hero",
+      appearance: "Blue skin, yellow dhoti, bow, calm firm face",
+    },
+    {
+      name: "Elephant",
+      role: "Gaja",
+      appearance: "Great bull elephant in forest, raised head",
+    },
+    {
+      name: "Cow elephant",
+      role: "Companion",
+      appearance: "Grey-white cow elephant near water",
+    },
+  ];
+}
+
+function tajCast(language: Language): GeneratedCharacter[] {
+  if (language === "hi") {
+    return [
+      {
+        name: "जमशेदजी",
+        role: "उद्योगपति",
+        appearance: "शालीन पारसी पोशाक, शांत दृढ़ चेहरा, सम्मान की चाह",
+      },
+      {
+        name: "गार्ड",
+        role: "ब्रिटिश गार्ड",
+        appearance: "औपनिवेशिक वर्दी, कठोर नज़र, बंद दरवाज़ा",
+      },
+      {
+        name: "वाचक",
+        role: "कथावाचक",
+        appearance: "गंभीर स्वर, ऐतिहासिक लहजा",
+      },
+    ];
+  }
+  return [
+    {
+      name: "Jamsetji",
+      role: "Industrialist",
+      appearance: "Dignified Parsi attire, calm firm face, seeking honour",
+    },
+    {
+      name: "Guard",
+      role: "British guard",
+      appearance: "Colonial uniform, hard eyes, closed hotel door",
+    },
+    {
+      name: "Narrator",
+      role: "Storyteller",
+      appearance: "Serious voice, historical tone",
+    },
   ];
 }
 
 function moodCycle(i: number, duration: MovieDuration): SceneMood {
   if (duration === "10sec") return "dramatic";
-  const cycle: SceneMood[] = ["dialogue", "action", "fight", "romance", "emotional", "romance"];
+  const cycle: SceneMood[] = [
+    "dialogue",
+    "action",
+    "fight",
+    "romance",
+    "emotional",
+    "romance",
+  ];
   return cycle[i % cycle.length]!;
 }
 
@@ -117,7 +219,9 @@ function buildFullScript(opts: {
   lines.push(hi ? "=== स्क्रिप्ट ===" : "=== SCRIPT ===");
   scenes.forEach((sc, i) => {
     lines.push("");
-    lines.push(`--- SCENE ${i + 1}: ${sc.title} [${sc.mood}] (~${sc.estimatedDurationSec ?? 50}s) ---`);
+    lines.push(
+      `--- SCENE ${i + 1}: ${sc.title} [${sc.mood}] (~${sc.estimatedDurationSec ?? 50}s) ---`,
+    );
     if (sc.narration) lines.push(`NARRATION: ${sc.narration}`);
     if (sc.gestureNotes) lines.push(`GESTURE: ${sc.gestureNotes}`);
     if (sc.dialogue) lines.push(sc.dialogue);
@@ -128,6 +232,148 @@ function buildFullScript(opts: {
   return lines.join("\n");
 }
 
+/** Beat-aware dialogue — never recycle the same stock line across scenes */
+function dialogueFromBeat(
+  beat: string,
+  i: number,
+  n: number,
+  mood: SceneMood,
+  hero: string,
+  love: string,
+  rival: string,
+  language: Language,
+  story: "taj" | "ram" | "default",
+): { dialogue: string; narration: string; gestureNotes: string } {
+  const snippet = beat.replace(/\s+/g, " ").trim().slice(0, 90);
+
+  if (story === "taj") {
+    if (language === "hi") {
+      const tajScenes = [
+        {
+          dialogue: `गार्ड: यहाँ भारतीयों का प्रवेश वर्जित है।\nजमशेदजी: यह होटल सबके लिए है — सम्मान का।`,
+          narration: "औपनिवेशिक मुंबई। एक दरवाज़े पर अपमान — और एक सपने का जन्म।",
+          gestureNotes: "बंद दरवाज़ा, सीधा कंधा, शांत लेकिन दृढ़ नज़र",
+        },
+        {
+          dialogue: `जमशेदजी: एक दिन ऐसा होटल बनेगा जहाँ रंग न पूछा जाए।\nगार्ड: सपने सस्ते होते हैं।`,
+          narration: "अपमान आग बनता है — ताज का विचार जन्म लेता है।",
+          gestureNotes: "मुट्ठी बंद, आकाश की ओर दृष्टि",
+        },
+        {
+          dialogue: `जमशेदजी: सम्मान माँगा नहीं जाता — बनाया जाता है।`,
+          narration: "उसी अपमान से उठता है भारत का गौरव — ताज।",
+          gestureNotes: "मजबूत कदम, आगे बढ़ना",
+        },
+        {
+          dialogue: `वाचक: और इस प्रकार एक इनकार ने इतिहास लिख दिया।`,
+          narration: "ताज महल होटल — सम्मान का उत्तर।",
+          gestureNotes: "स्थापना शॉट, भव्य द्वार",
+        },
+        {
+          dialogue: `जमशेदजी: अब दरवाज़ा सबके लिए खुला रहेगा।`,
+          narration: "कहानी यहीं खत्म नहीं — यह भारत के स्वाभिमान की शुरुआत है।",
+          gestureNotes: "खुला द्वार, गर्व भरी नज़र",
+        },
+      ];
+      const row = tajScenes[Math.min(i, tajScenes.length - 1)]!;
+      return row;
+    }
+    const en = [
+      {
+        dialogue: `Guard: Natives are not allowed.\nJamsetji: This hotel should honour every guest.`,
+        narration: "Colonial Mumbai. A door refused — a dream begins.",
+        gestureNotes: "Closed door, straight shoulders, calm firm gaze",
+      },
+      {
+        dialogue: `Jamsetji: One day a hotel will stand where colour is never asked.\nGuard: Dreams are cheap.`,
+        narration: "Insult turns to fire — the idea of the Taj is born.",
+        gestureNotes: "Fist tight, eyes to the sky",
+      },
+    ];
+    return en[Math.min(i, en.length - 1)]!;
+  }
+
+  if (story === "ram" && language === "hi") {
+    if (i === 0) {
+      return {
+        dialogue: `श्री राम: हे गजराज, क्या तुमने जनकसुता को देखा?`,
+        narration: snippet || "वन में श्री राम हाथी से सीता का पता पूछते हैं।",
+        gestureNotes: "धनुष कंधे पर, शांत प्रश्न",
+      };
+    }
+    if (mood === "action" || mood === "fight") {
+      return {
+        dialogue: `श्री राम: हाथिनी के साथ रमण करोगे तो प्राण चले जाएंगे।`,
+        narration: "क्षुब्ध होकर श्री राम शाप देते हैं — फिर कृपा भी।",
+        gestureNotes: "ऊठा हाथ, गंभीर मुद्रा",
+      };
+    }
+    return {
+      dialogue: `श्री राम: जल छिड़केगी तो प्राण बचेंगे — यह है गजोपसेचन।`,
+      narration: snippet || "शाप-निवृत्ति और करुणा।",
+      gestureNotes: "आशीष मुद्रा, शांत मुस्कान",
+    };
+  }
+
+  // Default: unique lines per scene index — never identical "aage kya" spam
+  if (language === "hi") {
+    if (mood === "fight" || mood === "action") {
+      return {
+        dialogue: `${rival}: रुक जा — यह रास्ता तेरा नहीं!\n${hero}: रास्ता मैं खुद बनाता हूँ।`,
+        narration: i === 0 ? `कहानी शुरू: ${snippet}` : "",
+        gestureNotes: "मुट्ठी, बचाव, दृढ़ कदम",
+      };
+    }
+    if (mood === "romance") {
+      return {
+        dialogue: `${love}: इस पल को मत छोड़ना।\n${hero}: मैं यहीं हूँ — तुम्हारे साथ।`,
+        narration: "",
+        gestureNotes: "हाथ मिलना, कोमल मुस्कान",
+      };
+    }
+    if (mood === "emotional") {
+      return {
+        dialogue: `${hero}: क्या सही रास्ता इतना कठिन होता है?\n${love}: सही रास्ता आसान नहीं होता।`,
+        narration: "",
+        gestureNotes: "सिर झुकाना, कंधे पर हाथ",
+      };
+    }
+    if (i === n - 1) {
+      return {
+        dialogue: `${hero}: अब हम तैयार हैं।\n${love}: हाँ — साथ में।`,
+        narration: "कहानी यहीं खत्म नहीं होती — यह एक नई शुरुआत है।",
+        gestureNotes: "कंधे से कंधा, आशा भरी नज़र",
+      };
+    }
+    return {
+      dialogue: `${hero}: ${snippet ? snippet.slice(0, 48) : "यह पल सब बदल देगा।"}\n${love}: मैं सुन रही हूँ।`,
+      narration: i === 0 ? `कहानी शुरू होती है।` : "",
+      gestureNotes: "धीरे चलना, एक-दूसरे की ओर देखना",
+    };
+  }
+
+  // English default
+  if (mood === "fight" || mood === "action") {
+    return {
+      dialogue: `${rival}: Stop — this path isn't yours!\n${hero}: I make my own path.`,
+      narration: i === 0 ? `The story begins: ${snippet}` : "",
+      gestureNotes: "fists, blocks, firm steps",
+    };
+  }
+  if (mood === "romance") {
+    return {
+      dialogue: `${love}: Don't let this moment go.\n${hero}: I'm here — with you.`,
+      narration: "",
+      gestureNotes: "hands meet, soft smile",
+    };
+  }
+  return {
+    dialogue: `${hero}: ${snippet ? snippet.slice(0, 48) : "This moment changes everything."}\n${love}: I'm listening.`,
+    narration: i === 0 ? "The story begins." : "",
+    gestureNotes: "slow walk, looking at each other",
+  };
+}
+
 export function generateScript(input: {
   title: string;
   idea: string;
@@ -136,12 +382,20 @@ export function generateScript(input: {
   genres?: string[];
 }): ScriptOutput {
   const language = input.language;
-  const title = input.title.trim() || (language === "hi" ? "नई कहानी" : "New Story");
+  const title =
+    input.title.trim() || (language === "hi" ? "नई कहानी" : "New Story");
   const idea = input.idea.trim() || title;
   const n = sceneCount(input.targetDuration);
   const sec = secPerScene(input.targetDuration, n);
-  const ram = isRamayanaStory(title + " " + idea);
-  const characters = ram ? ramayanaCast(language) : defaultCast(language);
+  const blob = `${title} ${idea}`;
+  const ram = isRamayanaStory(blob);
+  const taj = !ram && isTajStory(blob);
+  const story = ram ? "ram" : taj ? "taj" : "default";
+  const characters = ram
+    ? ramayanaCast(language)
+    : taj
+      ? tajCast(language)
+      : defaultCast(language);
   const beats = splitBeats(idea, n);
 
   const scenes: GeneratedScene[] = beats.map((beat, i) => {
@@ -149,44 +403,60 @@ export function generateScript(input: {
     const hero = characters[0]?.name || "Hero";
     const love = characters[1]?.name || "Partner";
     const rival = characters[2]?.name || "Rival";
-    let dialogue = "";
-    let narration = "";
-    let gestureNotes = "";
-    if (language === "hi") {
-      if (mood === "fight" || mood === "action") {
-        dialogue = `${rival}: तुम तैयार नहीं हो!\n${hero}: आज देख लेंगे।`;
-        gestureNotes = "तलवार/मुक्का, बचाव, किक, नाटकीय दूरी";
-      } else if (mood === "romance") {
-        dialogue = `${love}: डर लगता है कभी-कभी।\n${hero}: मैं हूँ ना।`;
-        gestureNotes = "हाथ पकड़ना, कोमल मुस्कान, नज़दीकी";
-      } else if (mood === "emotional") {
-        dialogue = `${hero}: क्या मैं सही रास्ते पर हूँ?\n${love}: सही रास्ता आसान नहीं होता।`;
-        gestureNotes = "सिर झुकाना, कंधे पर हाथ";
-      } else {
-        dialogue = `${hero}: यह जगह मुझे हमेशा कुछ याद दिलाती है...\n${love}: यादें कभी नहीं मरतीं।`;
-        gestureNotes = "धीरे चलना, एक-दूसरे की ओर देखना";
-      }
-      if (i === 0) narration = `कहानी शुरू होती है जहाँ ${beat.slice(0, 80)}`;
-      if (i === n - 1) narration = "कहानी यहीं खत्म नहीं होती — यह एक नई शुरुआत है।";
-    } else {
-      if (mood === "fight" || mood === "action") {
-        dialogue = `${rival}: You're not ready!\n${hero}: We'll see today.`;
-        gestureNotes = "strikes, blocks, dramatic distance";
-      } else if (mood === "romance") {
-        dialogue = `${love}: Sometimes I'm afraid.\n${hero}: I'm here.`;
-        gestureNotes = "hands meeting, soft smile, closeness";
-      } else {
-        dialogue = `${hero}: This place always reminds me...\n${love}: Memories don't die.`;
-        gestureNotes = "slow walk, looking at each other";
-      }
-      if (i === 0) narration = `The story begins where ${beat.slice(0, 80)}`;
+    const { dialogue, narration, gestureNotes } = dialogueFromBeat(
+      beat,
+      i,
+      n,
+      mood,
+      hero,
+      love,
+      rival,
+      language,
+      story,
+    );
+    const visualPrompt = [
+      beat.slice(0, 100),
+      `${hero}`,
+      mood,
+      story === "taj"
+        ? "colonial Mumbai hotel door, cinematic historical still, real human faces"
+        : "cinematic film still, clear faces, photoreal",
+    ].join(", ");
+
+    const titlesHi = [
+      "शुरुआत",
+      "मोड़",
+      "संघर्ष",
+      "प्रेम",
+      "संकल्प",
+      "अंत",
+    ];
+    const titlesEn = [
+      "Opening",
+      "Turn",
+      "Conflict",
+      "Bond",
+      "Resolve",
+      "Close",
+    ];
+    if (story === "taj" && language === "hi") {
+      titlesHi.splice(
+        0,
+        6,
+        "दरवाज़ा बंद",
+        "अपमान",
+        "संकल्प",
+        "सपना",
+        "ताज",
+        "सम्मान",
+      );
     }
-    const visualPrompt = [beat.slice(0, 100), `${hero} and ${love}`, mood, "cinematic film still, clear faces"].join(", ");
+
     return {
       title:
         language === "hi"
-          ? (["शुरुआत", "मोड़", "संघर्ष", "प्रेम", "संकल्प", "अंत"][i] || `दृश्य ${i + 1}`)
-          : (["Opening", "Turn", "Conflict", "Bond", "Resolve", "Close"][i] || `Scene ${i + 1}`),
+          ? titlesHi[i] || `दृश्य ${i + 1}`
+          : titlesEn[i] || `Scene ${i + 1}`,
       mood,
       dialogue,
       narration: narration || undefined,
@@ -218,7 +488,13 @@ export function generateScript(input: {
               : "5 min"
         }.`;
 
-  const fullScriptText = buildFullScript({ title, logline, characters, scenes, language });
+  const fullScriptText = buildFullScript({
+    title,
+    logline,
+    characters,
+    scenes,
+    language,
+  });
 
   return { title, logline, synopsis, characters, scenes, fullScriptText };
 }
