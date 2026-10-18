@@ -3,7 +3,7 @@ import type { PlayerScene } from "./scene-player";
 
 /**
  * Maps movie scenes → player frames.
- * Priority: external import (ReelShorts etc.) → panel upload → cast face → none.
+ * Priority: external Civitai/Roar video → external image → panel upload → cast face → none.
  */
 export function bindScenesForPlayer(
   scenes: Scene[],
@@ -34,9 +34,16 @@ export function bindScenesForPlayer(
       availableFaces[0] ||
       top;
     const characterPrompt = assigned
-      .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
+      .map((character) =>
+        [character.name, character.role, character.appearance]
+          .filter(Boolean)
+          .join(", "),
+      )
       .join("; ");
-    const visualPrompt = [sc.visualPrompt, characterPrompt ? `Consistent selected characters: ${characterPrompt}` : ""]
+    const visualPrompt = [
+      sc.visualPrompt,
+      characterPrompt ? `Consistent selected characters: ${characterPrompt}` : "",
+    ]
       .filter(Boolean)
       .join(". ");
 
@@ -50,6 +57,8 @@ export function bindScenesForPlayer(
       imageTop: top,
       imageBottom: bottom !== top ? bottom : sc.imageBottomLocal || top,
       audioUrl: sc.audioLocal || sc.audioUrl,
+      /** Civitai / Roar imported clip — plays under captions + script voice */
+      videoUrl: sc.externalVideoLocal || undefined,
     };
   });
 }
@@ -68,13 +77,6 @@ export function readImageAsDataUrl(file: File): Promise<string> {
 
 /** Phone-friendly audio import (WAV/MP3/M4A) as data URL for Play */
 export function readAudioAsDataUrl(file: File): Promise<string> {
-  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|ogg|aac)$/i.test(file.name)) {
-    return Promise.reject(new Error("Please pick an audio file (mp3/wav/m4a)"));
-  }
-  // ~2.5MB soft limit — localStorage/zustand persist
-  if (file.size > 2.5 * 1024 * 1024) {
-    return Promise.reject(new Error("Audio too large (max ~2.5 MB per scene)"));
-  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -86,9 +88,8 @@ export function readAudioAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** C — import frame from external AI app (image or first-frame of video later) */
+/** Video import for Civitai/Roar pipeline */
 export function readMediaAsDataUrl(file: File): Promise<string> {
-  if (file.type.startsWith("image/")) return readImageAsDataUrl(file);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
