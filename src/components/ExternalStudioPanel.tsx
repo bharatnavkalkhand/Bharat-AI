@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ExternalLink, Copy, Check, Clapperboard } from "lucide-react";
+import { ExternalLink, Copy, Check, Clapperboard, Mic2 } from "lucide-react";
 import type { Character, Scene } from "@/lib/types";
 import {
   invertAllScenes,
@@ -46,11 +46,26 @@ export function ExternalStudioPanel({
     const ok = await copyText(text);
     if (ok) {
       setCopied(key);
-      onStatus?.(hi ? "Clipboard me copy ho gaya" : "Copied to clipboard");
-      window.setTimeout(() => setCopied(null), 1600);
+      onStatus?.(hi ? "Prompt clipboard me copy — Civitai me paste karein" : "Prompt copied — paste in Civitai");
+      window.setTimeout(() => setCopied(null), 1800);
     } else {
       onStatus?.(hi ? "Copy fail — text select karke copy karein" : "Copy failed — select text manually");
     }
+  }
+
+  /** Copy video prompt then open Civitai Generate */
+  async function sendToCivitai(inv: InvertedScenePrompt) {
+    const ok = await copyText(inv.videoPrompt);
+    if (ok) {
+      setCopied(`vid-${inv.sceneId}`);
+      onStatus?.(
+        hi
+          ? "Prompt copy ho gaya → Civitai Generate khul raha hai. Paste → Generate → Download → yahan Import"
+          : "Prompt copied → opening Civitai Generate. Paste → Generate → Download → Import here",
+      );
+      window.setTimeout(() => setCopied(null), 2000);
+    }
+    window.open(inv.civitaiGenerateUrl, "_blank", "noopener,noreferrer");
   }
 
   async function onVideoFile(sceneId: string, file: File | null) {
@@ -60,13 +75,17 @@ export function ExternalStudioPanel({
         onStatus?.(hi ? "Video file chuniye (mp4/webm)" : "Pick a video file (mp4/webm)");
         return;
       }
-      if (file.size > 4 * 1024 * 1024) {
-        onStatus?.(hi ? "Video badi hai (max ~4 MB / scene)" : "Video too large (max ~4 MB / scene)");
+      if (file.size > 6 * 1024 * 1024) {
+        onStatus?.(hi ? "Video badi hai (max ~6 MB / scene)" : "Video too large (max ~6 MB / scene)");
         return;
       }
       const dataUrl = await readMediaAsDataUrl(file);
       onImportVideo(sceneId, dataUrl);
-      onStatus?.(hi ? `Video scene pe lag gaya (${file.name})` : `Video attached (${file.name})`);
+      onStatus?.(
+        hi
+          ? `Video lag gaya (${file.name}). Play pe script voice ke saath chalega.`
+          : `Video attached (${file.name}). Play will add script voice.`,
+      );
     } catch (e) {
       onStatus?.(e instanceof Error ? e.message : "Video import failed");
     }
@@ -76,10 +95,10 @@ export function ExternalStudioPanel({
     return (
       <section className={cn("mb-4 card-pro p-3", className)}>
         <p className="text-xs font-semibold">
-          {hi ? "Civitai + Roar.art studio" : "Civitai + Roar.art studio"}
+          {hi ? "Civitai video pipeline" : "Civitai video pipeline"}
         </p>
-        <p className="mt-1 text-[10px] text-muted">
-          {hi ? "Pehle script / pipeline chalao." : "Run script / pipeline first."}
+        <p className="mt-1 text-[11px] text-muted">
+          {hi ? "Pehle script / scenes banao." : "Create script / scenes first."}
         </p>
       </section>
     );
@@ -87,126 +106,151 @@ export function ExternalStudioPanel({
 
   return (
     <section className={cn("mb-4 card-pro p-3", className)}>
-      <div className="mb-2 flex items-center gap-2">
-        <Clapperboard className="h-4 w-4 text-accent" />
-        <p className="text-xs font-semibold">
-          {hi ? "Scene design · Civitai + Roar" : "Scene design · Civitai + Roar"}
-        </p>
+      <div className="mb-2 flex items-start gap-2">
+        <Clapperboard className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+        <div>
+          <p className="text-xs font-semibold">
+            {hi ? "Civitai Direct Pipeline" : "Civitai Direct Pipeline"}
+          </p>
+          <p className="mt-0.5 text-[10px] leading-relaxed text-muted">
+            {hi
+              ? "1) Prompt copy + Civitai Generate kholo → 2) Video download → 3) Import → 4) Play = video + script voice"
+              : "1) Copy prompt + open Civitai Generate → 2) Download video → 3) Import → 4) Play = video + script voice"}
+          </p>
+        </div>
       </div>
-      <p className="mb-3 text-[10px] leading-relaxed text-muted">
+
+      <div className="mb-3 flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent/10 px-2 py-1.5 text-[10px] text-accent">
+        <Mic2 className="h-3 w-3 shrink-0" />
         {hi
-          ? "1) Image prompt copy → Civitai Images. 2) Motion prompt → Roar Img2Vid. 3) Clip download karke yahan Import."
-          : "1) Copy image prompt → Civitai Images. 2) Motion prompt → Roar Img2Vid. 3) Download clip → Import here."}
-      </p>
+          ? "Voice app ke script dialogue se aati hai — Civitai se video, yahan se awaaz."
+          : "Voice comes from script dialogue — Civitai video + in-app voice on Play."}
+      </div>
 
       <ul className="space-y-2">
         {inverted.map((inv) => {
           const sc = scenes.find((s) => s.id === inv.sceneId);
           const hasVid = Boolean(sc?.externalVideoLocal);
-          const isOpen = openId === inv.sceneId;
+          const open = openId === inv.sceneId || inverted.length === 1;
           return (
             <li
               key={inv.sceneId}
-              className="rounded-lg border border-border bg-bg/40 px-2.5 py-2"
+              className="rounded-lg border border-border bg-black/20 p-2"
             >
               <button
                 type="button"
-                className="flex w-full items-center gap-2 text-left"
-                onClick={() => setOpenId(isOpen ? null : inv.sceneId)}
+                className="flex w-full items-center justify-between gap-2 text-left"
+                onClick={() =>
+                  setOpenId((id) => (id === inv.sceneId ? null : inv.sceneId))
+                }
               >
-                <span className="w-5 shrink-0 text-[10px] font-bold text-muted">
-                  {inv.order + 1}
+                <span className="text-[11px] font-semibold">
+                  {inv.order + 1}. {inv.title}{" "}
+                  <span className="font-normal text-muted">[{inv.mood}]</span>
                 </span>
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">{inv.title}</span>
-                {hasVid ? (
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-400">
-                    video ✓
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-muted">still</span>
-                )}
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[9px] font-semibold",
+                    hasVid
+                      ? "bg-emerald-500/20 text-emerald-300"
+                      : "bg-white/5 text-muted",
+                  )}
+                >
+                  {hasVid
+                    ? hi
+                      ? "Video + ready"
+                      : "Video ready"
+                    : hi
+                      ? "Pending"
+                      : "Pending"}
+                </span>
               </button>
 
-              {isOpen && (
-                <div className="mt-2 space-y-2 border-t border-border pt-2">
-                  <div>
-                    <p className="mb-1 text-[10px] font-semibold text-muted">Image prompt</p>
-                    <p className="max-h-16 overflow-y-auto rounded bg-card px-2 py-1 text-[10px] leading-snug text-fg/90">
-                      {inv.imagePrompt}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void doCopy(`${inv.sceneId}-img`, inv.imagePrompt)}
-                      className="mt-1 inline-flex items-center gap-1 text-[10px] text-accent"
-                    >
-                      {copied === `${inv.sceneId}-img` ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                      Copy image
-                    </button>
-                  </div>
+              {open && (
+                <div className="mt-2 space-y-2 border-t border-border/60 pt-2">
+                  <p className="line-clamp-3 text-[10px] leading-snug text-muted">
+                    {inv.videoPrompt.slice(0, 220)}
+                    {inv.videoPrompt.length > 220 ? "…" : ""}
+                  </p>
 
-                  <div>
-                    <p className="mb-1 text-[10px] font-semibold text-muted">Motion (Roar)</p>
-                    <p className="rounded bg-card px-2 py-1 text-[10px] leading-snug">{inv.motionPrompt}</p>
-                    <button
-                      type="button"
-                      onClick={() => void doCopy(`${inv.sceneId}-mot`, inv.motionPrompt)}
-                      className="mt-1 inline-flex items-center gap-1 text-[10px] text-accent"
-                    >
-                      {copied === `${inv.sceneId}-mot` ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                      Copy motion
-                    </button>
-                  </div>
+                  {/* Primary CTA: send to Civitai */}
+                  <button
+                    type="button"
+                    onClick={() => void sendToCivitai(inv)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-2 py-2 text-[11px] font-bold text-black"
+                  >
+                    {copied === `vid-${inv.sceneId}` ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    )}
+                    {hi
+                      ? "1. Prompt → Civitai Generate"
+                      : "1. Prompt → Civitai Generate"}
+                  </button>
 
                   <div className="flex flex-wrap gap-1.5">
-                    <a
-                      href={inv.civitaiImagesUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-medium hover:border-accent/40"
+                    <button
+                      type="button"
+                      onClick={() => void doCopy(`vp-${inv.sceneId}`, inv.videoPrompt)}
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-medium"
                     >
-                      Civitai Images <ExternalLink className="h-3 w-3" />
-                    </a>
+                      {copied === `vp-${inv.sceneId}` ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                      {hi ? "Sirf prompt copy" : "Copy prompt only"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void doCopy(`neg-${inv.sceneId}`, inv.negativePrompt)}
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-medium"
+                    >
+                      {copied === `neg-${inv.sceneId}` ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                      Negative
+                    </button>
                     <a
                       href={inv.civitaiVideosUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-medium hover:border-accent/40"
                     >
-                      Civitai Videos <ExternalLink className="h-3 w-3" />
+                      Gallery <ExternalLink className="h-3 w-3" />
                     </a>
                     <a
                       href={inv.roarVideoUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-[10px] font-semibold text-accent"
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-medium hover:border-accent/40"
                     >
-                      Roar Img2Vid <ExternalLink className="h-3 w-3" />
+                      Roar <ExternalLink className="h-3 w-3" />
                     </a>
-                    <label className="cursor-pointer rounded-md border border-border px-2 py-1 text-[10px] font-semibold">
-                      Import video
-                      <input
-                        type="file"
-                        accept="video/*,.mp4,.webm,.mov"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0] ?? null;
-                          void onVideoFile(inv.sceneId, f);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
                   </div>
 
-                  <p className="text-[9px] text-muted">
-                    tags: {inv.searchTags.join(", ")}
+                  {/* Step 2: import */}
+                  <label className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/50 bg-accent/5 px-2 py-2 text-[11px] font-semibold text-accent">
+                    {hi ? "2. Generated video Import" : "2. Import generated video"}
+                    <input
+                      type="file"
+                      accept="video/*,.mp4,.webm,.mov"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        void onVideoFile(inv.sceneId, f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+
+                  <p className="text-[9px] leading-relaxed text-muted">
+                    {hi
+                      ? "3. Neeche Play dabao — imported video + script ki voice ek saath."
+                      : "3. Press Play below — imported video + script voice together."}
                   </p>
                 </div>
               )}
@@ -214,6 +258,12 @@ export function ExternalStudioPanel({
           );
         })}
       </ul>
+
+      <p className="mt-2 text-[9px] leading-relaxed text-muted">
+        {hi
+          ? "Note: Civitai apna free Buzz use karta hai (account login). Bharat AI ₹0 rehta hai — video aap import karte ho, voice yahan se."
+          : "Note: Civitai uses your free Buzz (login). Bharat AI stays ₹0 — you import video; voice is from this app."}
+      </p>
     </section>
   );
 }
