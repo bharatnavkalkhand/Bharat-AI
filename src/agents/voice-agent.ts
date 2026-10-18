@@ -1,4 +1,4 @@
-import type { AgentResult, MovieProduceInput } from "./types";
+import type { AgentRunInput, AgentRunResult } from "./types";
 import {
   characterVoiceIdForSpeaker,
   resolveSystemVoice,
@@ -12,6 +12,9 @@ export interface SpokenLine {
   text: string;
   durationSec: number;
 }
+
+/** @deprecated use SpokenLine — kept for orchestrator callback naming */
+export type NarrationLine = SpokenLine;
 
 /** Parse dialogue lines like "Name: text" into speaker turns */
 export function parseDialogueTurns(
@@ -31,9 +34,11 @@ export function parseDialogueTurns(
   return out.length ? out : [{ speaker: fallbackSpeaker, text: dialogue }];
 }
 
-export function buildSpeakPlan(input: MovieProduceInput): SpokenLine[] {
+export function buildSpeakPlan(input: AgentRunInput): SpokenLine[] {
   const plan: SpokenLine[] = [];
-  const scenes = (input.scenes || []).slice().sort((a, b) => a.order - b.order);
+  const scenes = (input.scenes || [])
+    .slice()
+    .sort((a, b) => a.order - b.order);
   for (const sc of scenes) {
     if (sc.narration?.trim()) {
       plan.push({
@@ -84,14 +89,13 @@ export function speakLine(
         ? opts.voiceGender
         : undefined;
     const optionId = isNarrator
-      ? opts.narratorVoiceId ||
-        (gender === "female" ? "nar-f1" : "nar-m1")
+      ? opts.narratorVoiceId || (gender === "female" ? "nar-f1" : "nar-m1")
       : opts.characterVoiceId ||
         characterVoiceIdForSpeaker(line.speaker, gender);
     const resolved = resolveSystemVoice(
       optionId,
       opts.language,
-      gender || (isNarrator ? "male" : "male"),
+      gender || "male",
     );
     if (resolved.voice) u.voice = resolved.voice;
     if (gender === "female") {
@@ -116,12 +120,12 @@ export function stopVoice() {
 }
 
 export async function runVoiceAgent(
-  input: MovieProduceInput,
-): Promise<AgentResult> {
+  input: AgentRunInput,
+): Promise<AgentRunResult> {
   const plan = buildSpeakPlan(input);
   if (!plan.length) {
     return {
-      stage: "voice",
+      agentId: "voice",
       status: "skipped",
       message: "No dialogue or narration to speak. Generate a script first.",
       data: { lines: [] },
@@ -130,7 +134,7 @@ export async function runVoiceAgent(
 
   if (!("speechSynthesis" in window)) {
     return {
-      stage: "voice",
+      agentId: "voice",
       status: "needs_upgrade",
       message: "Browser has no speechSynthesis — use device with TTS support.",
       data: { lines: plan },
@@ -156,14 +160,13 @@ export async function runVoiceAgent(
     voiceGender: input.options?.voiceGender ?? "auto",
   };
 
-  // Speak a short sample of first 3 lines so pipeline proves voice works
   const sample = plan.slice(0, 3);
   for (let i = 0; i < sample.length; i++) {
-    await speakLine(sample[i], speakOpts);
+    await speakLine(sample[i]!, speakOpts);
   }
 
   return {
-    stage: "voice",
+    agentId: "voice",
     status: "succeeded",
     message: `Voice ready (${plan.length} lines). Gender=${speakOpts.voiceGender}. Full audio plays on Play/Export.`,
     data: {
