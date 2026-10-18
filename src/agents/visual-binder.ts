@@ -1,32 +1,46 @@
 import type { Character, Scene } from "@/lib/types";
 import type { PlayerScene } from "./scene-player";
+import { assignDefaultFaces } from "@/lib/default-faces";
 
 /**
  * Maps movie scenes → player frames.
- * Priority: external Civitai/Roar video → external image → panel upload → cast face → none.
+ * Priority: external video/image → panel upload → cast face → built-in portraits.
  */
 export function bindScenesForPlayer(
   scenes: Scene[],
   characters: Character[],
 ): PlayerScene[] {
   const sorted = [...scenes].sort((a, b) => a.order - b.order);
+  const defaultPack = assignDefaultFaces(
+    characters.map((c) => ({ name: c.name, role: c.role })),
+  );
   const faces = characters
-    .map((c) => c.referenceImageLocal || c.referenceImageUrl)
+    .map((c, i) => c.referenceImageLocal || c.referenceImageUrl || defaultPack[i])
     .filter(Boolean) as string[];
+  const pack = faces.length ? faces : defaultPack;
 
   return sorted.map((sc, i) => {
     const assigned = sc.characterIds
       .map((id) => characters.find((character) => character.id === id))
       .filter((character): character is Character => Boolean(character));
     const assignedFaces = assigned
-      .map((character) => character.referenceImageLocal || character.referenceImageUrl)
+      .map((character, ai) => {
+        const idx = characters.findIndex((c) => c.id === character.id);
+        return (
+          character.referenceImageLocal ||
+          character.referenceImageUrl ||
+          defaultPack[idx >= 0 ? idx : ai] ||
+          defaultPack[0]
+        );
+      })
       .filter(Boolean) as string[];
-    const availableFaces = assignedFaces.length ? assignedFaces : faces;
+    const availableFaces = assignedFaces.length ? assignedFaces : pack;
     const top =
       sc.externalImageLocal ||
       sc.imageTopLocal ||
       availableFaces[i % Math.max(availableFaces.length, 1)] ||
-      availableFaces[0];
+      availableFaces[0] ||
+      defaultPack[0];
     const bottom =
       sc.imageBottomLocal ||
       sc.externalImageLocal ||
@@ -57,7 +71,6 @@ export function bindScenesForPlayer(
       imageTop: top,
       imageBottom: bottom !== top ? bottom : sc.imageBottomLocal || top,
       audioUrl: sc.audioLocal || sc.audioUrl,
-      /** Civitai / Roar imported clip — plays under captions + script voice */
       videoUrl: sc.externalVideoLocal || undefined,
     };
   });
@@ -75,7 +88,6 @@ export function readImageAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Phone-friendly audio import (WAV/MP3/M4A) as data URL for Play */
 export function readAudioAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -88,7 +100,6 @@ export function readAudioAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Video import for Civitai/Roar pipeline */
 export function readMediaAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
