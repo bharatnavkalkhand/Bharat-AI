@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.18",
     "clsx": "^2.1.1",
     "lip-sync-engine": "^1.0.3",
     "lucide-react": "^0.510.0",
