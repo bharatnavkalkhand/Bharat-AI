@@ -496,24 +496,40 @@ export function ProducePage() {
         onFacePerformanceChange={setFacePerformance}
         use3dAvatar={use3dAvatar}
         on3dAvatarChange={setUse3dAvatar}
-        motionIntensity={motionIntensity}
-        onMotionIntensityChange={setMotionIntensity}
-        headline={headline}
-        onHeadlineChange={setHeadline}
-        language={movie.language}
+        onMotionHint={setMotionIntensity}
+        movieId={movieId}
+        movie={{
+          title: movie.title,
+          language: movie.language,
+          scenes: sortedScenes.map((s) => ({
+            id: s.id,
+            order: s.order,
+            title: s.title,
+            mood: s.mood,
+            dialogue: s.dialogue,
+            narration: s.narration,
+            visualPrompt: s.visualPrompt,
+            gestureNotes: s.gestureNotes,
+          })),
+          characters: movie.characters?.map((c) => ({
+            id: c.id,
+            name: c.name,
+            role: c.role,
+            appearance: c.appearance,
+            referenceImageLocal: c.referenceImageLocal,
+            referenceImageUrl: c.referenceImageUrl,
+          })),
+        }}
       />
 
       <ExternalStudioPanel
         language={movie.language}
+        movieTitle={movie.title}
         scenes={sortedScenes}
-        onImportImage={(sceneId, dataUrl, slot) => {
-          if (!movieId) return;
-          if (slot === "bottom") updateScene(movieId, sceneId, { imageBottomLocal: dataUrl });
-          else updateScene(movieId, sceneId, { imageTopLocal: dataUrl });
-        }}
+        characters={movie.characters ?? []}
         onImportVideo={(sceneId, dataUrl) => {
           if (!movieId) return;
-          updateScene(movieId, sceneId, { videoUrl: dataUrl } as never);
+          updateScene(movieId, sceneId, { externalVideoLocal: dataUrl } as never);
         }}
       />
 
@@ -528,69 +544,91 @@ export function ProducePage() {
               Audio
               <input
                 type="file"
-                accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav"
+                accept="audio/*,.mp3,.wav,.m4a,.ogg"
                 className="hidden"
-                onChange={(e) => onSceneAudioFile(sc.id, e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  void onSceneAudioFile(sc.id, f);
+                  e.target.value = "";
+                }}
               />
             </label>
-            {sc.audioLocal ? (
-              <button type="button" onClick={() => clearSceneAudio(sc.id)} className="text-[10px] text-red-400">
+            {sc.audioLocal && (
+              <button
+                type="button"
+                onClick={() => clearSceneAudio(sc.id)}
+                className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:border-red-500/40"
+              >
                 Clear
               </button>
-            ) : null}
+            )}
           </div>
         ))}
       </section>
 
-      <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-black">
-        <canvas ref={canvasRef} className="mx-auto block w-full max-w-full" width={360} height={450} />
-        {cinemaCaption ? (
-          <p className="border-t border-white/10 bg-black/80 px-3 py-2 text-center text-xs text-amber-100">
-            {cinemaCaption}
-          </p>
-        ) : null}
-      </div>
+      <canvas
+        ref={canvasRef}
+        className="mb-4 w-full rounded-2xl border border-border bg-black"
+        width={360}
+        height={450}
+      />
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void runPipeline()}
-          className="btn-primary flex flex-1 items-center justify-center gap-2 py-3 text-sm font-semibold disabled:opacity-50"
-        >
-          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-          {running ? "Producing…" : "Produce"}
-        </button>
-        <button
-          type="button"
-          disabled={busy || !movie.scenes.length}
-          onClick={() => void runCinematic(false)}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold disabled:opacity-50"
-        >
-          <Play className="h-4 w-4" /> Play
-        </button>
-        <button
-          type="button"
-          disabled={busy || !movie.scenes.length}
-          onClick={() => void runCinematic(true)}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm font-semibold text-accent disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" /> Export
-        </button>
-        {busy ? (
-          <button type="button" onClick={stopAll} className="rounded-xl border border-red-500/40 px-3 py-3 text-red-400">
-            <Square className="h-4 w-4" />
-          </button>
-        ) : null}
-      </div>
+      {cinemaCaption && (
+        <p className="mb-3 text-center text-xs text-muted">{cinemaCaption}</p>
+      )}
 
-      <div className="mt-3 space-y-1">
-        {recordStatus ? <p className="text-center text-[11px] text-muted">{recordStatus}</p> : null}
-        {lastExport ? (
-          <button type="button" onClick={redownload} className="mx-auto mt-2 block text-center text-[11px] text-accent">
-            Re-download {lastExport.name}
+      {recordStatus && (
+        <p className="mb-3 text-center text-xs text-accent">{recordStatus}</p>
+      )}
+
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-lg gap-2 sm:max-w-2xl">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void runPipeline()}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-sm font-bold text-black disabled:opacity-50"
+          >
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+            {running ? "Running…" : "Produce"}
           </button>
-        ) : null}
+          <button
+            type="button"
+            disabled={busy || !movie.scenes.length}
+            onClick={() => void runCinematic(false)}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-3 text-sm font-semibold disabled:opacity-50"
+          >
+            <Play className="h-4 w-4" />
+            Play
+          </button>
+          <button
+            type="button"
+            disabled={busy || !movie.scenes.length}
+            onClick={() => void runCinematic(true)}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-3 text-sm font-semibold disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </button>
+          {(playingCinema || exporting || running) && (
+            <button
+              type="button"
+              onClick={stopAll}
+              className="flex items-center justify-center rounded-xl border border-red-500/40 px-3 py-3 text-sm font-semibold text-red-400"
+            >
+              <Square className="h-4 w-4" />
+            </button>
+          )}
+          {lastExport && (
+            <button
+              type="button"
+              onClick={redownload}
+              className="flex items-center justify-center rounded-xl border border-border px-3 py-3 text-sm font-semibold"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
     </main>
   );
