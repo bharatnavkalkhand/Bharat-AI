@@ -68,10 +68,6 @@ function normalizeSpaceUrl(url: string): string {
   return trimmed;
 }
 
-async function sleep(ms: number) {
-  await new Promise((r) => setTimeout(r, ms));
-}
-
 function extractVideoUrl(value: unknown, spaceBase: string): string | null {
   if (typeof value === "string") {
     if (/^https?:\/\//i.test(value)) return value;
