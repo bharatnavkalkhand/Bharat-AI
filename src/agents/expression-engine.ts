@@ -2,10 +2,13 @@
  * Facial expression + lip overlay ("face remix" on photo panels).
  * Not photoreal neural warp — visible client-side performance on faces.
  * Prefers Rhubarb + energy; falls back to speech rhythm.
+ * When LipRegion (from MediaPipe) is provided, mouth is drawn on the
+ * actual detected lips of the photo instead of a fixed center estimate.
  */
 
 import type { RhubarbViseme, SmoothLipState } from "./rhubarb-lipsync";
 import { lipOpenFromViseme, widthFromViseme } from "./rhubarb-lipsync";
+import type { LipRegion } from "./face-landmarks";
 
 export type FaceExpression =
   | "neutral"
@@ -137,9 +140,10 @@ export function faceAnimAt(
 }
 
 /**
- * Draw a clear face remix on the panel:
- * assumes subject roughly center — mouth lower-middle third.
- * Bigger, higher-contrast lips so motion is obvious on photos.
+ * Draw a clear face remix on the panel.
+ * If `lip` (MediaPipe LipRegion) is provided and ok, mouth is placed
+ * exactly on the detected lips of the photo. Otherwise falls back to
+ * a center-estimate (old behaviour).
  */
 export function drawFaceOverlay(
   ctx: CanvasRenderingContext2D,
@@ -148,14 +152,33 @@ export function drawFaceOverlay(
   w: number,
   h: number,
   anim: FaceAnimState,
+  lip?: LipRegion | null,
 ) {
   const cx = x + w / 2;
-  // Face band: middle of portrait-style crop
+  // Face band: middle of portrait-style crop (used for brows/eyes/cheeks)
   const faceTop = y + h * 0.22;
   const faceH = h * 0.55;
-  const mouthY = faceTop + faceH * 0.72;
-  const mouthW = w * 0.16 * (anim.lipWidth || 1);
-  const mouthH = Math.max(3, h * 0.028 * (0.4 + anim.lipOpen * 2.6));
+
+  // --- Mouth position: prefer real detected lips ---
+  let mouthCx = cx;
+  let mouthY: number;
+  let mouthW: number;
+  let mouthH: number;
+
+  if (lip && lip.ok) {
+    // Map normalized landmarks into the drawn panel rect
+    mouthCx = x + lip.centerX * w;
+    mouthY = y + lip.centerY * h;
+    mouthW = Math.max(8, lip.width * w * (anim.lipWidth || 1) * 0.95);
+    // Base closed height from detection, then open with anim
+    const baseH = Math.max(3, lip.height * h * 1.1);
+    mouthH = Math.max(3, baseH * (0.55 + anim.lipOpen * 2.8));
+  } else {
+    // Fallback: previous fixed estimate
+    mouthY = faceTop + faceH * 0.72;
+    mouthW = w * 0.16 * (anim.lipWidth || 1);
+    mouthH = Math.max(3, h * 0.028 * (0.4 + anim.lipOpen * 2.6));
+  }
 
   // Soft focus ring so remix reads on busy photos
   const ring = ctx.createRadialGradient(
@@ -228,39 +251,53 @@ export function drawFaceOverlay(
   }
 
   // Mouth — high contrast so lips "move" on still photos
+  // Uses mouthCx / mouthY (real detected lips when LipRegion available)
   const v = anim.viseme;
   if (v === "B" || (anim.lipOpen < 0.12 && !v && !anim.expression.includes("speak"))) {
     ctx.strokeStyle = "rgba(90,30,40,0.95)";
     ctx.lineWidth = Math.max(2.5, w * 0.01);
     ctx.beginPath();
-    ctx.moveTo(cx - mouthW, mouthY);
-    ctx.quadraticCurveTo(cx, mouthY + (anim.expression === "soft" ? 4 : 2), cx + mouthW, mouthY);
+    ctx.moveTo(mouthCx - mouthW, mouthY);
+    ctx.quadraticCurveTo(
+      mouthCx,
+      mouthY + (anim.expression === "soft" ? 4 : 2),
+      mouthCx + mouthW,
+      mouthY,
+    );
     ctx.stroke();
   } else if (v === "F") {
     ctx.fillStyle = "rgba(30,8,12,0.65)";
-    ctx.fillRect(cx - mouthW, mouthY - 3, mouthW * 2, 6);
+    ctx.fillRect(mouthCx - mouthW, mouthY - 3, mouthW * 2, 6);
     ctx.strokeStyle = "rgba(120,50,60,0.9)";
-    ctx.strokeRect(cx - mouthW, mouthY - 3, mouthW * 2, 6);
+    ctx.strokeRect(mouthCx - mouthW, mouthY - 3, mouthW * 2, 6);
   } else {
     // Outer lip
     ctx.fillStyle = "rgba(90,25,35,0.55)";
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW * 1.08, Math.max(2, mouthH * 1.15), 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      mouthCx,
+      mouthY,
+      mouthW * 1.08,
+      Math.max(2, mouthH * 1.15),
+      0,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     // Inner open mouth
     ctx.fillStyle = "rgba(25,5,10,0.88)";
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW, Math.max(2, mouthH), 0, 0, Math.PI * 2);
+    ctx.ellipse(mouthCx, mouthY, mouthW, Math.max(2, mouthH), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(140,55,65,0.95)";
     ctx.lineWidth = Math.max(1.5, w * 0.006);
     ctx.beginPath();
-    ctx.ellipse(cx, mouthY, mouthW, Math.max(2, mouthH), 0, 0, Math.PI * 2);
+    ctx.ellipse(mouthCx, mouthY, mouthW, Math.max(2, mouthH), 0, 0, Math.PI * 2);
     ctx.stroke();
     if (anim.lipOpen > 0.38) {
       ctx.fillStyle = "rgba(245,245,250,0.65)";
       ctx.fillRect(
-        cx - mouthW * 0.5,
+        mouthCx - mouthW * 0.5,
         mouthY - mouthH * 0.4,
         mouthW,
         mouthH * 0.35,
