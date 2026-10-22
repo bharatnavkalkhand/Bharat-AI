@@ -23,7 +23,7 @@ export function CreateMoviePage() {
   const [title, setTitle] = useState("");
   const [idea, setIdea] = useState("");
   const [duration, setDuration] = useState<MovieDuration>("10sec");
-  const [styles, setStyles] = useState<string[]>(["mythology", "drama"]);
+  const [styles, setStyles] = useState<string[]>(["romance", "drama"]);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"create" | "oneclick">("create");
 
@@ -170,7 +170,7 @@ export function CreateMoviePage() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-accent"
-          placeholder={ui === "hi" ? "जैसे: गजोपसेचन" : "e.g. Gajopasechan"}
+          placeholder={ui === "hi" ? "जैसे: मानसून का वादा" : "e.g. Monsoon Promise"}
         />
       </section>
 
@@ -183,8 +183,8 @@ export function CreateMoviePage() {
           className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-accent"
           placeholder={
             ui === "hi"
-              ? "कहानी लिखें… (श्री राम, हाथी, शाप…)"
-              : "Write your story idea…"
+              ? "एक साफ कहानी लिखें… (एक दुनिया, एक cast)"
+              : "Write one clear story… (one universe, one cast)"
           }
         />
       </section>
@@ -194,7 +194,7 @@ export function CreateMoviePage() {
           {ui === "hi" ? "टेम्पलेट" : "Templates"}
         </p>
         <div className="flex flex-wrap gap-2">
-          {BHARAT_TEMPLATES.slice(0, 6).map((tpl, i) => (
+          {BHARAT_TEMPLATES.map((tpl, i) => (
             <button
               key={tpl.id}
               type="button"
