@@ -28,7 +28,6 @@ export function HomePage() {
 
   return (
     <main className="page-shell mx-auto min-h-dvh max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
-      {/* Top bar */}
       <header className="mb-8 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-orange-700 text-white shadow-lg shadow-orange-500/20">
@@ -78,7 +77,6 @@ export function HomePage() {
         </div>
       </header>
 
-      {/* Hero */}
       <section className="mb-8 overflow-hidden rounded-3xl border border-border bg-card">
         <div className="relative px-5 pb-6 pt-7 sm:px-7">
           <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-accent/20 blur-3xl" />
@@ -119,7 +117,6 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* Feature strip */}
         <div className="grid grid-cols-3 border-t border-border divide-x divide-border">
           {[
             {
@@ -147,7 +144,6 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Pipeline steps */}
       <section className="mb-8">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
           {uiLang === "hi" ? "कैसे काम करता है" : "How it works"}
@@ -171,7 +167,6 @@ export function HomePage() {
         </ol>
       </section>
 
-      {/* Templates */}
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold">
@@ -186,7 +181,7 @@ export function HomePage() {
           </button>
         </div>
         <div className="scroll-x-hide flex gap-2.5 pb-1">
-          {BHARAT_TEMPLATES.slice(0, 2).map((tpl) => (
+          {BHARAT_TEMPLATES.map((tpl) => (
             <button
               key={tpl.id}
               type="button"
@@ -204,7 +199,6 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Trust / honesty strip */}
       <div className="mb-8 flex gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3.5 text-sm">
         <Shield className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
         <div>
@@ -219,7 +213,6 @@ export function HomePage() {
         </div>
       </div>
 
-      {/* Movies list */}
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold">
