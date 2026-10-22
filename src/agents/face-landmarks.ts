@@ -38,15 +38,16 @@ let initPromise: Promise<FaceLandmarker | null> | null = null;
 /** Cache: image src / dataURL → LipRegion */
 const lipCache = new Map<string, LipRegion>();
 
+/** Headshot / upper-body biased — old 0.68 landed on chest for full-body glam */
 const FALLBACK: LipRegion = {
   centerX: 0.5,
-  centerY: 0.68,
-  width: 0.16,
-  height: 0.03,
-  upperY: 0.66,
-  lowerY: 0.70,
-  leftX: 0.42,
-  rightX: 0.58,
+  centerY: 0.38,
+  width: 0.14,
+  height: 0.025,
+  upperY: 0.36,
+  lowerY: 0.40,
+  leftX: 0.43,
+  rightX: 0.57,
   ok: false,
 };
 
