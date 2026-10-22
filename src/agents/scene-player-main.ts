@@ -34,7 +34,6 @@ import {
   characterVoiceIdForSpeaker,
 } from "./voice-catalog";
 
-// Re-export public types
 export type { PlayerScene, PlayerOptions, PlayResult };
 
 function drawHeadline(
@@ -190,12 +189,114 @@ function collectDialogueLines(
   return all;
 }
 
-// TEMP STUB — full playScenesOnCanvas restored next commit
+// NOTE: Full playScenesOnCanvas with MediaPipe getLipFor is in artifacts/scene-player-lip-fix.ts
+// Temporary minimal player so build succeeds; full restore follows.
 export async function playScenesOnCanvas(
-  _canvas: HTMLCanvasElement,
-  _scenes: PlayerScene[],
-  _options: PlayerOptions,
-  _stopRef?: { stopped: boolean },
+  canvas: HTMLCanvasElement,
+  scenes: PlayerScene[],
+  options: PlayerOptions,
+  stopRef?: { stopped: boolean },
 ): Promise<PlayResult> {
-  return { blob: null, mimeType: "video/webm", extension: "webm", hadAudioTrack: false };
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !scenes.length) {
+    return { blob: null, mimeType: "video/webm", extension: "webm", hadAudioTrack: false };
+  }
+  const w = options.width ?? 360;
+  const h = options.height ?? 450;
+  canvas.width = w;
+  canvas.height = h;
+  const intensity: MotionIntensity = options.motionIntensity ?? "high";
+  const facePerformance = options.facePerformance === true;
+  const layout = options.layout ?? "dual";
+  const headline = options.headline || (options.language === "hi" ? "कहानी" : "Story");
+
+  const imageCache = new Map<string, HTMLImageElement>();
+  async function loadImg(src?: string) {
+    if (!src) return null;
+    if (imageCache.has(src)) return imageCache.get(src)!;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = src;
+    await img.decode().catch(() => null);
+    imageCache.set(src, img);
+    return img;
+  }
+
+  async function getLipFor(src?: string | null, img?: HTMLImageElement | null) {
+    if (!src || !img || !img.complete || !img.naturalWidth) return null;
+    try {
+      const { detectLipRegion } = await import("./face-landmarks");
+      return await detectLipRegion(img, src);
+    } catch {
+      return null;
+    }
+  }
+
+  const { mimeType, extension } = pickRecorderMime();
+  let recorder: MediaRecorder | null = null;
+  const chunks: Blob[] = [];
+  if (options.record) {
+    try {
+      const stream = canvas.captureStream(30);
+      recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      recorder.start(200);
+    } catch {
+      recorder = null;
+    }
+  }
+
+  for (let i = 0; i < scenes.length; i++) {
+    if (stopRef?.stopped) break;
+    const sc = scenes[i]!;
+    options.onScene?.(i, scenes.length);
+    const caption = sc.dialogue || sc.narration || sc.title;
+    options.onCaption?.(caption);
+    const imgTop = await loadImg(sc.imageTop);
+    const lip = await getLipFor(sc.imageTop, imgTop);
+    const t0 = performance.now();
+    const dur = 3.5;
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (stopRef?.stopped) {
+          resolve();
+          return;
+        }
+        const t = (performance.now() - t0) / 1000;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, w, h);
+        const faceOpts: FaceOpts = {
+          speaking: true,
+          textLen: caption.length,
+          enabled: facePerformance,
+          lip,
+        };
+        if (layout === "single") {
+          drawPanel(ctx, 0, 0, w, h - 56, sc.mood, sc.title, imgTop, t, intensity, 0, faceOpts);
+        } else {
+          drawPanel(ctx, 0, 0, w, h / 2, sc.mood, sc.title, imgTop, t, intensity, 0, faceOpts);
+        }
+        drawCaptionBar(ctx, w, h, caption, t, layout);
+        if (t >= dur) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    if (options.embedAudio !== false && caption) {
+      await speakBrowser(caption, options.language, "", options.voiceGender);
+    }
+  }
+
+  if (recorder && recorder.state !== "inactive") {
+    await new Promise<void>((resolve) => {
+      recorder!.onstop = () => resolve();
+      recorder!.stop();
+      window.setTimeout(resolve, 1500);
+    });
+  }
+
+  const blob = chunks.length > 0 ? new Blob(chunks, { type: mimeType }) : null;
+  return { blob, mimeType, extension, hadAudioTrack: false, usedRhubarb: false };
 }
