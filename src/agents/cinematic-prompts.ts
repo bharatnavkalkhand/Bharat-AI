@@ -1,7 +1,6 @@
 /**
  * B — Cinematic prompt engine
- * Turns raw scene text into strong, consistent search / generation prompts.
- * Aims closer to commercial AI reel look (style anchors, not paid APIs).
+ * One clear universe per scene. Never mix Ramayana anchors with modern cast.
  */
 
 export interface CinematicPromptInput {
@@ -13,61 +12,68 @@ export interface CinematicPromptInput {
   visualPrompt?: string;
   gestureNotes?: string;
   language?: "en" | "hi";
+  /** Optional cast names — used only to keep subject consistent, not to dump bios */
+  characterNames?: string[];
 }
 
-const STYLE_ANCHOR =
-  "cinematic still, highly detailed, dramatic lighting, film composition, consistent characters, 4k concept art";
+const STYLE_TAIL =
+  "cinematic still, photoreal, clear faces, dramatic lighting, vertical 9:16, no text, no watermark";
 
-function detectUniverse(text: string): "ramayana" | "modern" | "generic" {
-  if (/राम|सीता|हनुमान|रावण|लक्ष्मण|गज|हाथी|हाथिनी|रघुनंदन|वनवास|ayodhya|rama|sita|elephant|gaj/i.test(text))
-    return "ramayana";
-  if (/city|hotel|train|phone|car|office|शहर|ट्रेन|होटल/i.test(text)) return "modern";
-  return "generic";
+/** Strict Ramayana detect — needs explicit Rama/Sita/etc, not vague "forest" */
+function isRamayana(text: string): boolean {
+  return /\b(राम|श्री राम|सीता|लक्ष्मण|हनुमान|रावण|रघुनंदन|वनवास|ayodhya|\brama\b|\bsita\b|lord rama)\b/i.test(
+    text,
+  );
 }
 
-function ramayanaAnchors(mood: string, beat: string): string[] {
-  const m = mood.toLowerCase();
-  const base = [
-    "Lord Rama blue skin yellow dhoti bow forest",
-    "Ramayana epic illustration forest",
-    "Indian mythology elephant Rama",
-  ];
-  if (/शाप|curse|क्षुब्ध|angry|fight/.test(beat + m))
-    return [
-      "Rama raising hand curse mystical light dark forest",
-      "angry Lord Rama elephant mythology art",
-      ...base,
-    ];
-  if (/प्रार्थना|क्षमा|bow|pray|दीन/.test(beat + m))
-    return [
-      "elephants bowing before Lord Rama forest",
-      "devotional Ramayana scene elephants",
-      ...base,
-    ];
-  if (/जल|गजो|water|splash|अचेत/.test(beat + m))
-    return [
-      "elephant spraying water river mythology",
-      "two elephants water shore tropical",
-      ...base,
-    ];
-  if (/घास|तृण|grass|सुख|विहार/.test(beat + m))
-    return [
-      "two elephants sharing grass sunny meadow",
-      "peaceful elephants jungle clearing",
-      ...base,
-    ];
-  if (/सीता|search|पता|खोज/.test(beat + m))
-    return [
-      "Lord Rama meeting elephants in dense forest",
-      "Rama and two elephants jungle path",
-      ...base,
-    ];
-  return base;
+function isTaj(text: string): boolean {
+  return /\b(ताज|जमशेद|jamsetji|taj mahal|colonial|औपनिवेश)/i.test(text);
 }
 
-/**
- * Build ranked English search queries (free image APIs work best in English).
- */
+function ramayanaSubject(mood: string, beat: string): string {
+  const m = (mood + " " + beat).toLowerCase();
+  if (/शाप|curse|क्षुब्ध|angry|fight/.test(m))
+    return "Lord Rama blue skin yellow dhoti raising hand curse mystical light dense forest";
+  if (/प्रार्थना|क्षमा|bow|pray|दीन/.test(m))
+    return "Lord Rama forest, elephants bowing, devotional Ramayana scene";
+  if (/जल|गजो|water|splash/.test(m))
+    return "Lord Rama and elephants at river, water spray, mythology forest";
+  if (/सीता|search|पता|खोज/.test(m))
+    return "Lord Rama with bow meeting elephant on jungle path, searching for Sita";
+  return "Lord Rama blue skin yellow dhoti bow in dense forest, Ramayana epic";
+}
+
+function tajSubject(mood: string): string {
+  if (/fight|action|angry/.test(mood.toLowerCase()))
+    return "colonial Mumbai hotel door confrontation, British guard and Indian industrialist, historical drama";
+  return "colonial Mumbai grand hotel entrance, Jamsetji at closed door, historical cinematic still";
+}
+
+function modernSubject(input: CinematicPromptInput): string {
+  const mood = (input.mood || "dialogue").toLowerCase();
+  const names =
+    input.characterNames?.filter(Boolean).slice(0, 2).join(" and ") ||
+    "young Indian man and woman";
+  const scene =
+    (input.sceneTitle || input.visualPrompt || input.title || "story moment")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 60);
+
+  const moodLook: Record<string, string> = {
+    romance: "soft light romantic couple, tender expression",
+    emotional: "emotional close-up, rain or soft dusk light",
+    dramatic: "high drama, strong contrast, intense atmosphere",
+    fight: "tense confrontation, firm stance, street or corridor",
+    action: "dynamic action pose, motion energy",
+    dialogue: "two characters facing each other, clear faces",
+    gesture: "expressive gesture, body language film still",
+  };
+  const look = moodLook[mood] || "cinematic film still";
+  return `${names}, ${scene}, ${look}`;
+}
+
+/** Ranked short search queries for free image APIs */
 export function buildCinematicQueries(input: CinematicPromptInput): string[] {
   const blob = [
     input.title,
@@ -75,47 +81,57 @@ export function buildCinematicQueries(input: CinematicPromptInput): string[] {
     input.visualPrompt,
     input.narration,
     input.dialogue,
-    input.gestureNotes,
   ]
     .filter(Boolean)
     .join(" ");
 
-  const universe = detectUniverse(blob);
   const out: string[] = [];
 
-  if (universe === "ramayana") {
-    out.push(...ramayanaAnchors(input.mood, blob));
+  if (isRamayana(blob)) {
+    out.push(ramayanaSubject(input.mood, blob));
+    out.push("Ramayana epic illustration forest cinematic");
+  } else if (isTaj(blob)) {
+    out.push(tajSubject(input.mood));
+    out.push("colonial Mumbai historical cinematic still");
   } else {
-    // Mood + situation
-    const moodMap: Record<string, string[]> = {
-      fight: ["epic duel cinematic", "warrior clash dramatic lighting"],
-      action: ["dynamic action film still", "chase sequence concept art"],
-      romance: ["romantic cinematic couple soft light", "tender embrace film still"],
-      emotional: ["emotional portrait cinematic tears", "dramatic character close-up"],
-      dramatic: ["high drama cinematic still", "storm atmosphere character"],
-      dialogue: ["two characters conversation cinematic", "film dialogue scene"],
-      gesture: ["expressive gesture character art", "body language concept art"],
-    };
-    out.push(...(moodMap[input.mood.toLowerCase()] || ["cinematic film still"]));
-    if (input.sceneTitle) out.push(`${input.sceneTitle} cinematic`);
+    out.push(modernSubject(input));
+    const mood = (input.mood || "").toLowerCase();
+    if (mood === "romance") out.push("romantic monsoon India couple soft light");
+    if (mood === "fight" || mood === "action")
+      out.push("cinematic confrontation India street");
+    if (mood === "emotional") out.push("emotional portrait India film still");
   }
-
-  if (input.visualPrompt) out.push(input.visualPrompt.slice(0, 80));
-
-  // Style tail for generation workers (HF/Colab)
-  out.push(STYLE_ANCHOR);
 
   const uniq: string[] = [];
   for (const q of out) {
-    const t = q.trim().slice(0, 120);
+    const t = q.trim().slice(0, 100);
     if (t && !uniq.includes(t)) uniq.push(t);
   }
-  return uniq.slice(0, 6);
+  return uniq.slice(0, 5);
 }
 
-/** Full generation prompt for free worker (HF / Colab) */
+/**
+ * Full generation prompt — ONE universe, no cast bio dump, no motion spam.
+ */
 export function buildGenerationPrompt(input: CinematicPromptInput): string {
-  const queries = buildCinematicQueries(input);
-  const subject = queries.slice(0, 3).join(", ");
-  return `${subject}, ${STYLE_ANCHOR}, no text, no watermark, vertical 9:16 composition`;
+  const blob = [
+    input.title,
+    input.sceneTitle,
+    input.visualPrompt,
+    input.narration,
+    input.dialogue,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  let subject: string;
+  if (isRamayana(blob)) {
+    subject = ramayanaSubject(input.mood, blob);
+  } else if (isTaj(blob)) {
+    subject = tajSubject(input.mood);
+  } else {
+    subject = modernSubject(input);
+  }
+
+  return `${subject}. ${STYLE_TAIL}`;
 }
