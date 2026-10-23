@@ -5,6 +5,12 @@ Mobile-first AI movie **production pipeline** for Indian users. Design goal: **â
 **Live:** https://bharat-ai-chi.vercel.app  
 **Repo:** https://github.com/bharatnavkalkhand/Bharat-AI
 
+## Synced tools from AppDeploy
+
+- **Research Engine** (`/research`): searches public GitHub repository metadata and links to candidate projects. GitHub API rate limits apply; licence and GPU compatibility require review.
+- **Avatar Studio** (`/avatar-studio`): creates a reusable cinematic master prompt with identity continuity, action, camera, lighting and audio direction, with copy/TXT export. It does not render video itself.
+- The home page links to both tools. These features are integrated into this existing repository rather than creating a duplicate app.
+
 ## Current completion (honest)
 
 | Area | Status | Notes |

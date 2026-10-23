@@ -13,6 +13,8 @@ import {
   Download,
   Zap,
   Shield,
+  Search,
+  WandSparkles,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { BHARAT_TEMPLATES } from "@/lib/bharat-templates";
@@ -142,6 +144,17 @@ export function HomePage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="mb-8 grid gap-3 sm:grid-cols-2">
+        <Link to="/research" className="card-pro flex items-start gap-3 p-4 transition hover:border-accent/50">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent"><Search className="h-5 w-5" /></span>
+          <span><span className="block text-sm font-semibold">Research Engine</span><span className="mt-1 block text-xs leading-relaxed text-muted">{uiLang === "hi" ? "GitHub पर open-source video, avatar और lip-sync tools खोजें।" : "Discover open-source video, avatar and lip-sync tools on GitHub."}</span></span>
+        </Link>
+        <Link to="/avatar-studio" className="card-pro flex items-start gap-3 p-4 transition hover:border-accent/50">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent"><WandSparkles className="h-5 w-5" /></span>
+          <span><span className="block text-sm font-semibold">Avatar Studio</span><span className="mt-1 block text-xs leading-relaxed text-muted">{uiLang === "hi" ? "Consistent character और cinematic scene का master prompt बनाएँ।" : "Build a cinematic master prompt with character-continuity guidance."}</span></span>
+        </Link>
       </section>
 
       <section className="mb-8">
