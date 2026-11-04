@@ -30,12 +30,26 @@ Script Agent → Voice Agent → Video Agent
 - **Orchestrator** runs stages in order from **Produce** (`/movie/:id/produce`).
 - Agents are pluggable: upgrade quality without rewriting the app UI.
 
-### Free LLM (optional)
+### LLM routing with OmniRoute (optional)
 
-1. Create a free key at [console.groq.com](https://console.groq.com) (free tier, rate limits).
-2. In Vercel → Project → Settings → Environment Variables:
-   - `GROQ_API_KEY` = your key
-3. Redeploy. Script Agent will try Groq first; if unavailable, falls back to local engine.
+Bharat AI's server-side Script Agent supports an OpenAI-compatible OmniRoute gateway.
+When configured, requests go to OmniRoute first, then fall back to Groq, then to the
+browser's local script engine. Provider keys are kept in Vercel server environment
+variables and are never sent to the browser.
+
+Set these Vercel Project → Settings → Environment Variables:
+
+- `OMNIROUTE_BASE_URL` = your reachable OmniRoute server URL (for example, `https://your-gateway.example`)
+- `OMNIROUTE_API_KEY` = the gateway key copied from OmniRoute Dashboard → Endpoints
+- `OMNIROUTE_MODEL` = `auto` (optional; defaults to `auto`)
+- `GROQ_API_KEY` = optional fallback key
+
+Redeploy after setting variables. OmniRoute itself is open-source, but a self-hosted
+gateway still needs an always-on reachable host and eligible provider connections.
+Free provider quotas, signup requirements, terms, and availability are controlled
+by each provider. OmniRoute does not supply free GPU rendering and does not generate
+video frames; it improves text/script model routing only. Do not put the gateway URL
+or secret key in frontend code or browser localStorage.
 
 ### Real character voice (upgrade)
 
