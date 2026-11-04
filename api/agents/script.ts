@@ -1,16 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 /**
- * Optional free-tier LLM script enhancement.
- * - If GROQ_API_KEY is set (Groq free tier): uses llama model
- * - Else returns { useLocal: true } so client uses browser script engine
+ * Optional OpenAI-compatible LLM enhancement.
+ * Priority: OmniRoute (if configured) -> Groq (if configured) -> local browser engine.
+ * Provider credentials stay server-side; never expose them to the browser.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const groqKey = process.env.GROQ_API_KEY;
   const body = req.body as {
     title?: string;
     synopsis?: string;
@@ -19,17 +18,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     genres?: string[];
   };
 
-  if (!groqKey) {
-    return res.status(200).json({
-      useLocal: true,
-      message:
-        "No free LLM key configured. Client will use browser Script Agent.",
-    });
+  const omniKey = process.env.OMNIROUTE_API_KEY;
+  const omniBase = (process.env.OMNIROUTE_BASE_URL || "").trim().replace(/\/+$/, "");
+  const omniModel = process.env.OMNIROUTE_MODEL || "auto";
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (!omniKey || !omniBase) {
+    if (!groqKey) {
+      return res.status(200).json({
+        useLocal: true,
+        message: "No LLM provider configured. Client will use the browser Script Agent.",
+      });
+    }
   }
 
-  try {
-    const lang = body.language === "hi" ? "Hindi" : "English";
-    const prompt = `You are a film script assistant for short avatar movies (5-10 min).
+  const lang = body.language === "hi" ? "Hindi" : "English";
+  const prompt = `You are a film script assistant for short avatar movies (5-10 min).
 CRITICAL RULES:
 1. Follow the user's Idea/story EXACTLY. Do not invent a modern romance (Arjun/Meera) if the story is mythological or different.
 2. Characters must come from the story (e.g. Ram, Sita, elephant if that is the story).
@@ -48,28 +52,61 @@ logline (string), characters (array of {name, role, appearance}),
 scenes (array of {title, mood, dialogue, gestureNotes, visualPrompt, estimatedDurationSec, narration}).
 mood must be one of: fight, romance, gesture, dialogue, action, emotional, dramatic.`;
 
-    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const messages = [
+    { role: "system", content: "Output JSON only. No markdown. Follow the user's story exactly." },
+    { role: "user", content: prompt },
+  ];
+
+  async function requestModel(url: string, key: string, model: string) {
+    return fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${groqKey}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: "Output JSON only. No markdown. Follow the user's story exactly." },
-          { role: "user", content: prompt },
-        ],
+        model,
+        messages,
         temperature: 0.5,
         response_format: { type: "json_object" },
       }),
     });
+  }
 
-    if (!r.ok) {
-      const errText = await r.text();
+  try {
+    let provider = "";
+    let r: Response | null = null;
+    let lastFailure = "";
+
+    if (omniKey && omniBase) {
+      const base = omniBase.endsWith("/v1") ? omniBase : `${omniBase}/v1`;
+      try {
+        r = await requestModel(`${base}/chat/completions`, omniKey, omniModel);
+        if (r.ok) provider = "omniroute";
+        else lastFailure = `OmniRoute returned HTTP ${r.status}`;
+      } catch (e) {
+        lastFailure = e instanceof Error ? e.message : "OmniRoute connection failed";
+      }
+    }
+
+    if (!r?.ok && groqKey) {
+      try {
+        r = await requestModel(
+          "https://api.groq.com/openai/v1/chat/completions",
+          groqKey,
+          "llama-3.3-70b-versatile",
+        );
+        if (r.ok) provider = "groq-free-tier";
+        else lastFailure = `Groq returned HTTP ${r.status}`;
+      } catch (e) {
+        lastFailure = e instanceof Error ? e.message : "Groq connection failed";
+      }
+    }
+
+    if (!r?.ok) {
       return res.status(200).json({
         useLocal: true,
-        message: `Groq free tier unavailable (${r.status}). Using local engine. ${errText.slice(0, 120)}`,
+        message: `Configured LLM providers unavailable. Falling back to local engine. ${lastFailure}`,
       });
     }
 
@@ -81,7 +118,7 @@ mood must be one of: fight, romance, gesture, dialogue, action, emotional, drama
 
     return res.status(200).json({
       useLocal: false,
-      provider: "groq-free-tier",
+      provider,
       script: {
         title: body.title || "Untitled Movie",
         logline: parsed.logline || "",
@@ -90,7 +127,7 @@ mood must be one of: fight, romance, gesture, dialogue, action, emotional, drama
         scenes: parsed.scenes || [],
         fullScriptText: JSON.stringify(parsed, null, 2),
         language: body.language === "hi" ? "hi" : "en",
-        note: "Generated via Groq free-tier LLM (rate limits apply).",
+        note: `Generated via ${provider}; provider quotas and limits apply.`,
       },
     });
   } catch (e) {
