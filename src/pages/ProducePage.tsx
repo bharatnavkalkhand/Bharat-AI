@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  ArrowLeft, Sparkles, Volume2, Clapperboard, Play, Square, Bot, Loader2, AlertCircle, Download,
+  ArrowLeft, Sparkles, Volume2, Clapperboard, Play, Square, Bot, Loader2, AlertCircle, Download, Youtube,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import { runMoviePipeline } from "@/agents/orchestrator";
@@ -13,6 +13,11 @@ import { bindScenesForPlayer } from "@/agents/visual-binder";
 import type { MotionIntensity } from "@/agents/motion-engine";
 import { DirectorControls } from "@/components/DirectorControls";
 import { runWebImageAgent } from "@/agents/web-image-agent";
+import {
+  buildYoutubePublishPackage,
+  downloadPublishPackage,
+  getYtAgentDashboardUrl,
+} from "@/agents/youtube-publish-bridge";
 import { cn } from "@/lib/utils";
 
 function StagePill({ status }: { status: AgentStageStatus }) {
@@ -74,6 +79,32 @@ export function ProducePage() {
     return storyboard.map((f) => ({
       id: f.sceneId, title: f.title, mood: f.mood, dialogue: f.subtitle, visualPrompt: f.visualPrompt,
     }));
+  }
+
+  function exportYoutubePackage() {
+    if (!movie) return;
+    const scenes = (movie.scenes || []).slice().sort((a, b) => a.order - b.order);
+    const pkg = buildYoutubePublishPackage({
+      title: movie.title,
+      language: movie.language,
+      logline: headline.trim() || movie.synopsis || undefined,
+      genre: (movie.genres && movie.genres[0]) || undefined,
+      characters: movie.characters.map((c) => c.name),
+      scenes: scenes.map((s, i) => ({
+        index: i + 1,
+        title: s.title,
+        dialogue: s.dialogue,
+        narration: s.narration,
+      })),
+      videoFileHint: clipUrl || undefined,
+    });
+    downloadPublishPackage(pkg);
+    const dash = getYtAgentDashboardUrl();
+    setStatus(
+      dash
+        ? `YouTube package downloaded — open agent at ${dash}`
+        : "YouTube package downloaded — paste into PC agent (see docs/integrations/youtube-automation-agent.md)",
+    );
   }
 
   async function runPipeline() {
@@ -193,7 +224,7 @@ export function ProducePage() {
   const busy = running || busyCinema;
 
   return (
-    <main className="page-shell mx-auto min-h-dvh max-w-lg px-4 pb-28 pt-6 sm:max-w-2xl">
+    <main className="page-shell mx-auto min-h-dvh max-w-lg px-4 pb-36 pt-6 sm:max-w-2xl">
       <header className="mb-6 flex items-start gap-3">
         <Link to={`/movie/${movie.id}`} className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-muted">
           <ArrowLeft className="h-5 w-5" />
@@ -301,6 +332,18 @@ export function ProducePage() {
             className="flex flex-[2] items-center justify-center gap-1.5 rounded-xl bg-orange-700 py-2.5 text-xs font-bold text-white disabled:opacity-50">
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
             Run production pipeline
+          </button>
+        </div>
+        <div className="mx-auto mt-2 flex max-w-lg sm:max-w-2xl">
+          <button
+            type="button"
+            disabled={!movie.scenes?.length && !movie.title}
+            onClick={exportYoutubePackage}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-500/40 bg-red-500/10 py-2.5 text-xs font-semibold text-red-200 disabled:opacity-50"
+            title="Download JSON for darkzOGx/youtube-automation-agent on your PC"
+          >
+            <Youtube className="h-3.5 w-3.5" />
+            YouTube package (JSON)
           </button>
         </div>
       </div>
