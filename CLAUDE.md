@@ -47,3 +47,34 @@ If Claude Code setup, dependencies, tests, or deployment are blocked:
 
 ## Scope and honesty
 Claude Code, Claude-Mem, and Task Observer are developer workflow tools. They do not themselves provide GPU capacity or render AI video. Do not claim any of them is installed locally until the local verification commands succeed.
+
+---
+
+## CURRENT PRIORITY TASK (2026-11-08) — Free AI Video Generator (no credits / no tokens)
+
+**Goal:** Turn Bharat AI into a practical AI video generator that works without any paid credits, API tokens, or paid GPU. Use only free/open-source paths. Stay on the canonical repo.
+
+**Use replica / open-source approach:**
+- Base everything on the existing free path already in the repo (HF ZeroGPU Wan 2.1 worker in `workers/hf-zerogpu/`, client adapter in `src/agents/hf-zerogpu-worker.ts`, Video Agent routing in `src/agents/video-agent.ts`).
+- Replicate the public product patterns of free AI video tools (text-to-video, image-to-video, short clip generation) using open models and HF Spaces. Do **not** reverse-engineer proprietary commercial tools (Flixier, Runway, Kling, etc.).
+- Prefer the replica of the free HF ZeroGPU pattern already scaffolded. Extend it rather than starting a new app.
+
+**Concrete next steps for Claude Code:**
+1. Read `FREE_VIDEO_PATH.md`, `README.md`, `workers/hf-zerogpu/`, and `src/agents/video-agent.ts` + `hf-zerogpu-worker.ts` first.
+2. Improve the free path so a user can:
+   - Generate a short silent AI video clip from a scene prompt with zero keys (HF ZeroGPU Space).
+   - Optionally do image-to-video if the worker supports it (extend the Gradio adapter cleanly).
+   - Keep the honest storyboard fallback when no worker URL is set or quota is exhausted.
+3. Add multi-scene support where practical: generate one clip per scene (or a short sequence) within free quota limits, then assemble a preview in the client scene player. Do not promise unlimited length.
+4. Keep all generation client-side or via public free Spaces. No new paid dependencies.
+5. Update docs (`FREE_VIDEO_PATH.md`, README) with exact steps and honest limits (HF free ZeroGPU ~5 min/day, short clips only).
+6. Ensure `npm run build` / typecheck still pass. Make small, reviewable commits.
+
+**Hard constraints (non-negotiable):**
+- ₹0 operating cost for the free path.
+- No API keys required for the primary free video path.
+- No reverse engineering of proprietary video tools.
+- Canonical repo only: `bharatnavkalkhand/Bharat-AI`.
+- Honest messaging: never claim unlimited free photoreal movies.
+
+When this task is done, summarize changed files, remaining limits, and the exact steps a user must take to deploy their own free HF Space.
