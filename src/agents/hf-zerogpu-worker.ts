@@ -57,10 +57,6 @@ function normalizeSpaceUrl(url: string): string {
   return trimmed;
 }
 
-async function sleep(ms: number) {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** Gradio Video outputs vary by version: string, {url}, {path}, or {video:{...}}. */
 function extractVideoUrl(value: unknown, spaceBase: string): string | null {
   if (typeof value === "string") {
@@ -135,40 +131,160 @@ async function gradioCall(
   return body.event_id;
 }
 
-/** Poll Gradio event stream for a result and normalize the Video component payload. */
+/**
+ * Read Gradio SSE stream for a generation result.
+ *
+ * Gradio 4.x streams Server-Sent Events:
+ *   event: generating\ndata: ...\n\n   (progress heartbeats)
+ *   event: complete\ndata: [[...result...]]\n\n  (final payload)
+ *   event: error\ndata: "message"\n\n
+ *
+ * We use ReadableStream line-by-line to avoid buffering a 2–4 min response
+ * body in memory. Falls back to full-body read if the browser/env lacks
+ * streaming support.
+ */
 async function gradioPoll(
   spaceBase: string,
   eventId: string,
   maxMs = 240_000,
 ): Promise<RemoteJobStatus> {
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
+  const url = `${spaceBase}/gradio_api/call/generate/${encodeURIComponent(eventId)}`;
+
+  try {
+    const res = await fetch(url);
+    if (res.status === 429 || res.status === 503) {
+      return {
+        status: "failed",
+        error: "HF ZeroGPU quota exhausted or Space busy",
+        retryable: true,
+      };
+    }
+    if (!res.ok) {
+      return {
+        status: "failed",
+        error: `Gradio poll HTTP ${res.status}`,
+        retryable: res.status >= 500,
+      };
+    }
+
+    // Prefer streaming so we don't buffer the whole response body.
+    if (res.body) {
+      return await readGradioStream(res.body, spaceBase, maxMs);
+    }
+
+    // Fallback: read full body (works in environments without streaming).
+    const text = await res.text();
+    return parseGradioSseText(text, spaceBase);
+  } catch (err) {
+    return {
+      status: "failed",
+      error: err instanceof Error ? err.message : "fetch failed",
+      retryable: true,
+    };
+  }
+}
+
+/** Parse a fully-buffered SSE text block (fallback path). */
+function parseGradioSseText(text: string, spaceBase: string): RemoteJobStatus {
+  // Collect event+data pairs.
+  const lines = text.split("\n");
+  let currentEvent = "";
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (line.startsWith("event:")) {
+      currentEvent = line.slice(6).trim();
+      continue;
+    }
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "null") continue;
+
+    if (currentEvent === "error") {
+      return {
+        status: "failed",
+        error: payload.replace(/^"|"$/g, ""),
+        retryable: true,
+      };
+    }
+
     try {
-      const res = await fetch(
-        `${spaceBase}/gradio_api/call/generate/${encodeURIComponent(eventId)}`,
-      );
-      if (res.status === 429 || res.status === 503) {
+      const parsed = JSON.parse(payload) as unknown;
+      const videoUrl = extractVideoUrl(parsed, spaceBase);
+      if (videoUrl) return { status: "succeeded", videoUrl };
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        "error" in parsed
+      ) {
+        const error = (parsed as { error: unknown }).error;
         return {
           status: "failed",
-          error: "HF ZeroGPU quota exhausted or Space busy",
+          error: String(error ?? "Gradio generation failed"),
           retryable: true,
         };
       }
-      if (!res.ok) {
-        await sleep(2500);
-        continue;
-      }
+    } catch {
+      // Non-JSON heartbeat — keep scanning.
+    }
+  }
 
-      const text = await res.text();
-      const dataLines = text
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim());
+  // If stream ended without a recognizable result.
+  return {
+    status: "failed",
+    error: "Gradio stream ended without a recognizable video URL",
+    retryable: false,
+  };
+}
 
-      for (const line of dataLines) {
-        if (!line || line === "null") continue;
+/** Stream SSE line-by-line from a ReadableStream<Uint8Array>. */
+async function readGradioStream(
+  body: ReadableStream<Uint8Array>,
+  spaceBase: string,
+  maxMs: number,
+): Promise<RemoteJobStatus> {
+  const decoder = new TextDecoder();
+  const reader = body.getReader();
+  const deadline = Date.now() + maxMs;
+
+  let buffer = "";
+  let currentEvent = "";
+
+  try {
+    while (Date.now() < deadline) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lineEnd = buffer.lastIndexOf("\n");
+      if (lineEnd === -1) continue;
+
+      const chunk = buffer.slice(0, lineEnd + 1);
+      buffer = buffer.slice(lineEnd + 1);
+
+      for (const rawLine of chunk.split("\n")) {
+        const line = rawLine.trimEnd();
+
+        if (line.startsWith("event:")) {
+          currentEvent = line.slice(6).trim();
+          continue;
+        }
+
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "null") continue;
+
+        if (currentEvent === "error") {
+          return {
+            status: "failed",
+            error: payload.replace(/^"|"$/g, ""),
+            retryable: true,
+          };
+        }
+
         try {
-          const parsed = JSON.parse(line) as unknown;
+          const parsed = JSON.parse(payload) as unknown;
           const videoUrl = extractVideoUrl(parsed, spaceBase);
           if (videoUrl) return { status: "succeeded", videoUrl };
 
@@ -186,22 +302,14 @@ async function gradioPoll(
             };
           }
         } catch {
-          // Ignore non-JSON heartbeat/progress lines and keep polling.
+          // Non-JSON heartbeat line — continue reading.
         }
       }
-
-      if (/event: complete/.test(text) && dataLines.length > 0) {
-        return {
-          status: "failed",
-          error: "Gradio completed without returning a recognizable video URL",
-          retryable: false,
-        };
-      }
-      await sleep(3000);
-    } catch {
-      await sleep(3000);
     }
+  } finally {
+    reader.releaseLock();
   }
+
   return { status: "failed", error: "timeout", retryable: true };
 }
 

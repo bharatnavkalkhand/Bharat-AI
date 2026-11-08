@@ -9,17 +9,49 @@ Canonical guide for turning Bharat AI into a **usable free AI video generator** 
 3. Never add paid GPU/API dependencies without explicit approval.
 4. Public product patterns only — no proprietary reverse engineering.
 
+---
+
 ## Path A — HF ZeroGPU text-to-video (primary)
 
-Already implemented:
+### What it does
+Generates short, silent 16:9 AI video clips using Wan 2.1 T2V 1.3B on
+Hugging Face ZeroGPU. Free tier gives ~5 GPU-min/day per account; a ~2s clip
+costs ~45 GPU-seconds. The video agent generates up to **3 clips per run**
+(one per scene, in order) to stay within the daily budget, then falls back
+to storyboard placeholders for remaining scenes.
 
-- Worker template: `workers/hf-zerogpu/` (Wan 2.1 T2V 1.3B Gradio)
+### Files
+- Worker Space: `workers/hf-zerogpu/app.py` + `requirements.txt`
 - Client adapter: `src/agents/hf-zerogpu-worker.ts`
-- Wired from `src/agents/video-agent.ts` when Produce worker URL is an HF Space
+- Video agent routing: `src/agents/video-agent.ts`
 
-Deploy steps: see `workers/hf-zerogpu/README.md`.
+### Deploy your own HF Space (5 steps)
 
-Paste Space URL into Produce → **A · Free HF / Colab worker URL**.
+1. **Create a Hugging Face account** at https://huggingface.co (free).
+2. **Create a new Space**:
+   - Go to https://huggingface.co/new-space
+   - SDK: **Gradio**
+   - Hardware: **ZeroGPU** (free, requires account verification — may take a day)
+   - Space name: e.g. `bharat-ai-video-worker`
+3. **Upload these two files** to the Space (via the web UI or git):
+   - `workers/hf-zerogpu/app.py`
+   - `workers/hf-zerogpu/requirements.txt`
+4. **Wait for the Space to build** (~5–10 min on first run; model weights
+   (~5 GB) are downloaded from Hugging Face Hub at startup).
+5. **Copy your Space URL** (e.g. `https://your-name-bharat-ai-video-worker.hf.space`)
+   and paste it into Bharat AI → **Produce** → **Free HF / Colab worker URL**.
+
+### Honest limits
+| Limit | Detail |
+|---|---|
+| GPU minutes | ~5 min/day on HF free ZeroGPU (empirical; subject to change) |
+| Clip length | 1–3 seconds (17–49 frames at 16 fps) |
+| Scenes per run | Up to 3 real clips; rest stay as storyboard |
+| Quality | Wan 2.1 T2V 1.3B — good short motion, not photoreal |
+| Audio | Silent clips only; audio is added in a separate TTS stage |
+| Queue wait | 30 s – 4 min depending on Space load |
+
+---
 
 ## Path B — MuseTalk / LivePortrait lip-sync (optional)
 
@@ -29,11 +61,15 @@ Paste Space URL into Produce → **A · Free HF / Colab worker URL**.
 
 Use after you have a face portrait + TTS/imported audio.
 
+---
+
 ## Path C — Guided external AI video import (no auto API)
 
 - Civitai / Roar / ReelShorts style import via ExternalStudioPanel
 - User generates elsewhere for free, imports MP4/image into a scene
 - No unlimited free third-party API claims
+
+---
 
 ## Path D — Client preview (always free)
 
@@ -41,16 +77,24 @@ Use after you have a face portrait + TTS/imported audio.
 - Web Speech voice
 - Works offline for preview even when GPU quota is exhausted
 
+---
+
 ## Acceptance checklist
 
-- [ ] User can run Script + Voice with zero keys
-- [ ] User can deploy HF ZeroGPU Space from `workers/hf-zerogpu/`
-- [ ] User can paste Space URL and get a short silent AI clip (quota permitting)
-- [ ] Without worker URL, app honestly reports storyboard-only
-- [ ] No paid keys required for the above
+- [x] User can run Script + Voice with zero keys
+- [x] Worker code deployable from `workers/hf-zerogpu/` (5-step guide above)
+- [x] User can paste Space URL and get a short silent AI clip (quota permitting)
+- [x] Up to 3 scenes get real clips per run; rest stay as honest storyboard
+- [x] Without worker URL, app reports storyboard-only (no silent failure)
+- [x] No paid keys required for the above
+- [x] SSE stream read correctly (streaming, no full-body buffering)
+- [x] ZeroGPU-compatible app.py (no module-level CUDA; lazy pipe.to("cuda"))
+
+---
 
 ## Not in scope for ₹0 claim
 
 - Unlimited multi-minute photoreal movies
 - Guaranteed daily GPU minutes (HF quota changes)
-- Commercial closed-model APIs
+- Commercial closed-model APIs (Runway, Kling, etc.)
+- Real-time generation

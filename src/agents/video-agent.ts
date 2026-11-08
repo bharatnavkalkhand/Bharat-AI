@@ -78,41 +78,87 @@ export async function runVideoAgent(
     /huggingface\.co\/spaces\//i.test(normalizedWorkerUrl);
 
   if (normalizedWorkerUrl && isHuggingFaceSpace) {
-    // First prove the real generation path end-to-end. The free ZeroGPU
-    // allowance is small, so do not silently spend it on every storyboard scene.
-    const firstScene = [...input.scenes].sort((a, b) => a.order - b.order)[0];
-    const selectedIds = firstScene?.characterIds ?? [];
-    const sceneCharacters = input.characters.filter((character) =>
-      selectedIds.length ? selectedIds.includes(character.id) : true,
-    );
-    const castDescription = sceneCharacters
-      .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
-      .join("; ");
-    const prompt = [
-      firstScene?.visualPrompt || `${firstScene?.title || input.title}, ${firstScene?.mood || "dramatic"} cinematic scene`,
-      castDescription ? `Keep these characters visually consistent: ${castDescription}` : "",
-      "photorealistic live-action cinematic video, realistic human or humanoid anatomy, natural full-body movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, no cartoon, no illustration, no 2D motion graphics, no subtitles, no text",
-    ].filter(Boolean).join(". ");
-    const generated = await generateSilentClip({
-      spaceUrl: normalizedWorkerUrl,
-      prompt,
-      durationSec: 2,
-      seed: 42,
-    });
+    // Generate short silent clips scene by scene, spending free ZeroGPU quota
+    // carefully. HF free tier is ~5 GPU-min/day; a 2-second clip costs ~45s.
+    // We cap at MAX_SCENES_TO_GENERATE so we don't blow the daily budget on a
+    // long storyboard.  Remaining scenes keep their storyboard placeholder.
+    const MAX_SCENES_TO_GENERATE = 3;
+    const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
+    const scenesToGenerate = sortedScenes.slice(0, MAX_SCENES_TO_GENERATE);
 
-    if ("videoUrl" in generated) {
+    const generatedClips: Array<{
+      sceneId: string;
+      videoUrl: string;
+      frames: number;
+    }> = [];
+    let firstError: string | null = null;
+
+    for (const scene of scenesToGenerate) {
+      const selectedIds = scene.characterIds ?? [];
+      const sceneCharacters = input.characters.filter((c) =>
+        selectedIds.length ? selectedIds.includes(c.id) : true,
+      );
+      const castDescription = sceneCharacters
+        .map((c) =>
+          [c.name, c.role, c.appearance].filter(Boolean).join(", "),
+        )
+        .join("; ");
+      const prompt = [
+        scene.visualPrompt ||
+          `${scene.title}, ${scene.mood || "dramatic"} cinematic scene`,
+        castDescription
+          ? `Keep these characters visually consistent: ${castDescription}`
+          : "",
+        "photorealistic live-action cinematic video, realistic human or humanoid anatomy, natural full-body movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, no cartoon, no illustration, no 2D motion graphics, no subtitles, no text",
+      ]
+        .filter(Boolean)
+        .join(". ");
+
+      const generated = await generateSilentClip({
+        spaceUrl: normalizedWorkerUrl,
+        prompt,
+        durationSec: 2,
+        seed: 42 + scene.order,
+      });
+
+      if ("videoUrl" in generated) {
+        generatedClips.push({
+          sceneId: scene.id,
+          videoUrl: generated.videoUrl,
+          frames: generated.frames,
+        });
+      } else {
+        // Quota exhausted or Space error — stop generating, report what we have.
+        firstError = generated.error;
+        break;
+      }
+    }
+
+    if (generatedClips.length > 0) {
+      const firstClip = generatedClips[0];
+      const clipSummary = generatedClips
+        .map((c, i) => `  Scene ${i + 1}: ${c.videoUrl}`)
+        .join("\n");
+      const skipped = sortedScenes.length - generatedClips.length;
+      const skippedNote =
+        skipped > 0
+          ? ` ${skipped} scene(s) kept as storyboard (quota cap or generation limit).`
+          : "";
+
       return {
         agentId: "video",
         status: "succeeded",
-        message: `Real AI video clip generated. Open/copy this MP4 URL: ${generated.videoUrl} — short silent test clip; full movie assembly is the next stage.`,
-        outputText: `Generated real clip for scene: ${firstScene?.title || input.title}\nVideo: ${generated.videoUrl}`,
+        message: `Generated ${generatedClips.length} real AI clip(s) (silent, ~2s each).${skippedNote}\n${clipSummary}`,
+        outputText: `Generated ${generatedClips.length} clip(s) for: ${input.title}\n${clipSummary}`,
         data: {
           board,
           mode: "hf-zero-gpu",
-          clipUrl: generated.videoUrl,
-          clipFrames: generated.frames,
-          clipSceneId: firstScene?.id,
-          clipDurationSec: generated.frames / 16,
+          clips: generatedClips,
+          // Convenience fields kept for backward compat with scene player.
+          clipUrl: firstClip.videoUrl,
+          clipFrames: firstClip.frames,
+          clipSceneId: firstClip.sceneId,
+          clipDurationSec: firstClip.frames / 16,
         },
         durationMs: performance.now() - t0,
       };
@@ -121,11 +167,14 @@ export async function runVideoAgent(
     return {
       agentId: "video",
       status: "failed",
-      message: `Real AI video generation failed: ${generated.error}. No MP4 was produced. Check the Hugging Face Space URL, its build/runtime logs, and free GPU availability.`,
+      message: `Real AI video generation failed: ${firstError ?? "unknown error"}. No MP4 was produced. Check the Hugging Face Space URL, its build/runtime logs, and free GPU availability.`,
       outputText: board
-        .map((f, i) => `Storyboard only — frame ${i + 1}: ${f.title} [${f.mood}] ${f.durationSec}s — ${f.visualPrompt}`)
+        .map(
+          (f, i) =>
+            `Storyboard only — frame ${i + 1}: ${f.title} [${f.mood}] ${f.durationSec}s — ${f.visualPrompt}`,
+        )
         .join("\n"),
-      data: { board, mode: "storyboard", workerError: generated.error },
+      data: { board, mode: "storyboard", workerError: firstError },
       durationMs: performance.now() - t0,
     };
   }

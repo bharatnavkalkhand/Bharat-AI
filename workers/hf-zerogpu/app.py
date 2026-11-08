@@ -11,9 +11,11 @@ from diffusers.utils import export_to_video
 from huggingface_hub import snapshot_download
 
 MODEL_ID = os.getenv("MODEL_ID", "Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
-# Download and place the model at startup. ZeroGPU's startup pack handles
-# module-level CUDA placement; loading lazily inside the GPU function adds
-# expensive checkpoint loading to every request and can exceed the reservation.
+
+# Download model weights at startup (CPU, no GPU needed here).
+# ZeroGPU does NOT allow CUDA calls at module level — the GPU is only
+# allocated inside a @spaces.GPU-decorated function. We therefore keep the
+# pipeline on CPU here and move it to CUDA lazily on first use.
 MODEL_PATH = snapshot_download(repo_id=MODEL_ID)
 vae = AutoencoderKLWan.from_pretrained(
     MODEL_PATH,
@@ -31,7 +33,8 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config,
     flow_shift=3.0,
 )
-pipe.to("cuda")
+# Do NOT call pipe.to("cuda") here — ZeroGPU forbids module-level CUDA.
+# The generate_clip function moves the pipeline to CUDA inside the GPU window.
 
 NEGATIVE_PROMPT = (
     "low quality, blurry, static image, distorted anatomy, extra limbs, "
@@ -61,6 +64,8 @@ def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
         raise gr.Error("Choose a supported short clip length.")
 
     try:
+        # Move to CUDA inside the GPU window (ZeroGPU pattern).
+        pipe.to("cuda")
         generator = torch.Generator(device="cuda").manual_seed(int(seed))
         frames = pipe(
             prompt=prompt,
@@ -84,6 +89,9 @@ def generate_clip(prompt: str, num_frames: int, seed: int) -> str:
     except Exception as exc:
         raise gr.Error(f"Video generation failed: {type(exc).__name__}: {exc}") from exc
     finally:
+        # Return pipeline to CPU so VRAM is freed before ZeroGPU releases the
+        # allocation. Other ZeroGPU users benefit from the freed memory.
+        pipe.to("cpu")
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
