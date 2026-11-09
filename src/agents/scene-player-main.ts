@@ -255,9 +255,12 @@ export async function playScenesOnCanvas(
     const caption = sc.dialogue || sc.narration || sc.title;
     options.onCaption?.(caption);
     const imgTop = await loadImg(sc.imageTop);
+    const imgBottom = layout === "dual" ? await loadImg(sc.imageBottom) : null;
     const lip = await getLipFor(sc.imageTop, imgTop);
     const t0 = performance.now();
-    const dur = 3.5;
+    const dur = options.targetDurationSec
+      ? options.targetDurationSec / scenes.length
+      : 3.5;
     await new Promise<void>((resolve) => {
       const tick = () => {
         if (stopRef?.stopped) {
@@ -277,6 +280,10 @@ export async function playScenesOnCanvas(
           drawPanel(ctx, 0, 0, w, h - 56, sc.mood, sc.title, imgTop, t, intensity, 0, faceOpts);
         } else {
           drawPanel(ctx, 0, 0, w, h / 2, sc.mood, sc.title, imgTop, t, intensity, 0, faceOpts);
+          drawPanel(
+            ctx, 0, h / 2, w, h / 2, sc.mood, sc.title,
+            imgBottom || imgTop, t, intensity, Math.PI, faceOpts,
+          );
         }
         drawCaptionBar(ctx, w, h, caption, t, layout);
         if (t >= dur) resolve();
