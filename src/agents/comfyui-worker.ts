@@ -166,62 +166,9 @@ export function createComfyUiWorker(
         // try native Comfy path
       }
 
-      // Path B — native ComfyUI /prompt (workflow must be preloaded / API format)
-      const clientId =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `bharat-${Date.now()}`;
-
-      const workflowHint = {
-        // Placeholder graph marker — operators replace with exported API workflow
-        // that reads prompt + optional image. Bridge servers should prefer Path A.
-        bharat: {
-          prompt: request.prompt,
-          durationSec: request.durationSec,
-          aspectRatio: request.aspectRatio,
-          width: request.width,
-          height: request.height,
-          referenceImageUrls: request.referenceImageUrls || [],
-          audioPrompt: request.audioPrompt || "",
-          mode: options.mode || "auto",
-          seed: request.seed,
-        },
-      };
-
-      const res = await fetch(`${base}/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: workflowHint,
-          client_id: clientId,
-          extra_data: { idempotencyKey },
-        }),
-      });
-
-      if (res.status === 429 || res.status === 503) {
-        throw new QuotaUnavailableError("ComfyUI overloaded");
-      }
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(
-          `ComfyUI /prompt failed (${res.status}). ` +
-            `Use a bridge with /submit or load an API workflow. ${text.slice(0, 120)}`,
-        );
-      }
-
-      const json = (await res.json()) as { prompt_id?: string };
-      if (!json.prompt_id) {
-        throw new Error("ComfyUI did not return prompt_id");
-      }
-
-      const remoteJobId = `${id}:${json.prompt_id}`;
-      jobs.set(remoteJobId, {
-        kind: "comfy",
-        base,
-        promptId: json.prompt_id,
-        startedAt: Date.now(),
-      });
-      return { remoteJobId };
+      throw new Error(
+        "The ComfyUI URL is reachable, but it does not expose Bharat AI's /submit generation bridge. Native ComfyUI /prompt needs a real exported Wan API workflow; Bharat AI will not send a fake placeholder graph. Start the Bharat AI ComfyUI bridge with a Wan text-to-video or image-to-video workflow, then retry.",
+      );
     },
 
     async status(remoteJobId: string): Promise<RemoteJobStatus> {
