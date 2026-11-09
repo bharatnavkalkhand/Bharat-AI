@@ -1,25 +1,27 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #07070a;
-  --color-fg: #fafafa;
-  --color-muted: #9ca3af;
-  --color-card: #111118;
-  --color-card-elevated: #16161f;
-  --color-border: #27272f;
-  --color-border-strong: #3f3f4a;
-  --color-accent: #f97316;
-  --color-accent-hover: #ea580c;
-  --color-accent-soft: rgba(249, 115, 22, 0.12);
-  --color-success: #34d399;
-  --color-info: #38bdf8;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-bg: #18181b;
+  --color-fg: #fafaf9;
+  --color-muted: #a1a1aa;
+  --color-card: #27272a;
+  --color-card-elevated: #3f3f46;
+  --color-border: #52525b;
+  --color-border-strong: #71717a;
+  --color-accent: #d6a24a;
+  --color-accent-hover: #e3b766;
+  --color-accent-soft: rgba(214, 162, 74, 0.14);
+  --color-success: #4d9b78;
+  --color-info: #a1a1aa;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
@@ -31,11 +33,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Subtle cinematic vignette on main surfaces */
 .page-shell {
   background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(249, 115, 22, 0.08), transparent 55%),
-    radial-gradient(800px 400px at 100% 0%, rgba(56, 189, 248, 0.04), transparent 40%),
+    radial-gradient(1000px 460px at 50% -14%, rgba(214, 162, 74, 0.075), transparent 58%),
     var(--color-bg);
 }
 
@@ -44,18 +44,16 @@ button,
   cursor: pointer;
 }
 
-/* Focus ring for accessibility */
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/* Smooth cards */
 .card-pro {
   background: var(--color-card);
   border: 1px solid var(--color-border);
-  border-radius: 1rem;
-  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 0.875rem;
+  transition: border-color 0.18s ease, transform 0.18s ease;
 }
 
 .card-pro:hover {
@@ -63,20 +61,19 @@ button,
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-  color: white;
+  background: var(--color-accent);
+  color: #18181b;
   font-weight: 600;
-  border-radius: 1rem;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
-  box-shadow: 0 8px 24px rgba(249, 115, 22, 0.25);
+  border-radius: 0.625rem;
+  transition: transform 0.12s ease, background-color 0.12s ease;
 }
 
 .btn-primary:hover {
-  filter: brightness(1.05);
+  background: var(--color-accent-hover);
 }
 
 .btn-primary:active {
-  transform: scale(0.98);
+  transform: translateY(1px);
 }
 
 @supports (padding: max(0px)) {
@@ -86,11 +83,22 @@ button,
   }
 }
 
-/* Hide scrollbar on horizontal strips but keep scroll */
 .scroll-x-hide {
   overflow-x: auto;
   scrollbar-width: none;
 }
+
 .scroll-x-hide::-webkit-scrollbar {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
