@@ -9,7 +9,7 @@ import {
   Users,
 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
-import type { MovieDuration, SceneMood } from "@/lib/types";
+import type { Language, MovieDuration, SceneMood } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const MOODS: SceneMood[] = [
@@ -81,13 +81,14 @@ export function MovieWorkspacePage() {
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-bold">{movie.title}</h1>
-          <p className="text-sm text-muted">
+          <p className="text-xs text-muted">
             {movie.targetDuration === "10sec"
               ? "10 sec"
-              : movie.targetDuration === "5min"
-                ? "5 min"
-                : "10 min"}{" "}
+              : movie.targetDuration === "10min"
+                ? "10 min"
+                : "5 min"}{" "}
             · {movie.characters.length} cast · {movie.scenes.length} scenes
+            {movie.language === "hi" ? " · हिन्दी" : " · EN"}
           </p>
         </div>
         <Link
@@ -98,7 +99,7 @@ export function MovieWorkspacePage() {
         </Link>
       </header>
 
-      <section className="mb-4 card-pro space-y-3 p-3">
+      <section className="mb-4 space-y-2 card-pro p-3">
         <p className="text-xs font-semibold">
           <Pencil className="mr-1 inline h-3.5 w-3.5" /> Edit details
         </p>
@@ -133,6 +134,28 @@ export function MovieWorkspacePage() {
               className={cn(
                 "rounded-xl border px-2 py-2 text-xs font-medium",
                 editDuration === opt.id
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border text-muted",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2">
+          {([
+            { id: "hi" as Language, label: "हिन्दी" },
+            { id: "en" as Language, label: "English" },
+          ]).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => {
+                if (movieId) updateMovie(movieId, { language: opt.id });
+              }}
+              className={cn(
+                "flex-1 rounded-xl border px-2 py-2 text-xs font-medium",
+                movie.language === opt.id
                   ? "border-accent bg-accent/10 text-accent"
                   : "border-border text-muted",
               )}
@@ -178,12 +201,8 @@ export function MovieWorkspacePage() {
                   })
                 }
               />
-              <button
-                type="button"
-                className="text-muted"
-                onClick={() => removeCharacter(movieId!, c.id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
+              <button type="button" onClick={() => removeCharacter(movieId!, c.id)}>
+                <Trash2 className="h-3.5 w-3.5 text-muted" />
               </button>
             </li>
           ))}
@@ -205,7 +224,6 @@ export function MovieWorkspacePage() {
                     : `Scene ${movie.scenes.length + 1}`,
                 mood: "dialogue",
                 dialogue: "",
-                status: "draft",
                 characterIds: [],
               });
             }}
