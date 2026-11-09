@@ -1,20 +1,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
-  Movie,
   Character,
-  Scene,
-  MovieDuration,
   Language,
+  Movie,
+  MovieDuration,
+  Scene,
   SceneMood,
 } from "@/lib/types";
 import type { ScriptOutput } from "@/lib/script-engine";
 
-interface MovieState {
+function uid(): string {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+type MovieStore = {
   movies: Movie[];
   currentMovieId: string | null;
-
-  createMovie: (opts: {
+  createMovie: (input: {
     title?: string;
     idea?: string;
     language?: Language;
@@ -23,7 +26,11 @@ interface MovieState {
   }) => Movie;
   setCurrentMovie: (id: string | null) => void;
   updateMovie: (id: string, patch: Partial<Movie>) => void;
-  addCharacter: (movieId: string, character: Omit<Character, "id">) => Character;
+  deleteMovie: (id: string) => void;
+  addCharacter: (
+    movieId: string,
+    char: Omit<Character, "id"> & { id?: string },
+  ) => void;
   updateCharacter: (
     movieId: string,
     characterId: string,
@@ -32,31 +39,20 @@ interface MovieState {
   removeCharacter: (movieId: string, characterId: string) => void;
   addScene: (
     movieId: string,
-    scene: Omit<Scene, "id" | "order">,
-  ) => Scene;
-  updateScene: (
-    movieId: string,
-    sceneId: string,
-    patch: Partial<Scene>,
+    scene: Partial<Scene> & { title?: string; mood?: SceneMood },
   ) => void;
+  updateScene: (movieId: string, sceneId: string, patch: Partial<Scene>) => void;
   removeScene: (movieId: string, sceneId: string) => void;
-  reorderScenes: (movieId: string, sceneIds: string[]) => void;
-  deleteMovie: (id: string) => void;
   applyScriptResult: (
     movieId: string,
     result: ScriptOutput,
     opts?: { replaceCast?: boolean; replaceScenes?: boolean },
   ) => void;
-}
+};
 
-function uid() {
-  return (
-    globalThis.crypto?.randomUUID?.() ??
-    `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-  );
-}
-
-export const useMovieStore = create<MovieState>()(
+export const useMovieStore = create<
+  MovieStore
+>()(
   persist(
     (set) => ({
       movies: [],
@@ -65,7 +61,7 @@ export const useMovieStore = create<MovieState>()(
       createMovie: ({
         title,
         idea,
-        language = "en",
+        language = "hi",
         targetDuration = "5min",
         genres = [],
       }) => {
@@ -103,131 +99,6 @@ export const useMovieStore = create<MovieState>()(
           ),
         })),
 
-      addCharacter: (movieId, character) => {
-        const id = uid();
-        const full: Character = { ...character, id };
-        set((s) => ({
-          movies: s.movies.map((m) =>
-            m.id === movieId
-              ? {
-                  ...m,
-                  characters: [...m.characters, full],
-                  updatedAt: new Date().toISOString(),
-                }
-              : m,
-          ),
-        }));
-        return full;
-      },
-
-      updateCharacter: (movieId, characterId, patch) =>
-        set((s) => ({
-          movies: s.movies.map((m) =>
-            m.id === movieId
-              ? {
-                  ...m,
-                  characters: m.characters.map((c) =>
-                    c.id === characterId ? { ...c, ...patch } : c,
-                  ),
-                  updatedAt: new Date().toISOString(),
-                }
-              : m,
-          ),
-        })),
-
-      removeCharacter: (movieId, characterId) =>
-        set((s) => ({
-          movies: s.movies.map((m) =>
-            m.id === movieId
-              ? {
-                  ...m,
-                  characters: m.characters.filter((c) => c.id !== characterId),
-                  scenes: m.scenes.map((sc) => ({
-                    ...sc,
-                    characterIds: sc.characterIds.filter(
-                      (id) => id !== characterId,
-                    ),
-                  })),
-                  updatedAt: new Date().toISOString(),
-                }
-              : m,
-          ),
-        })),
-
-      addScene: (movieId, scene) => {
-        const id = uid();
-        let created: Scene | null = null;
-        set((s) => ({
-          movies: s.movies.map((m) => {
-            if (m.id !== movieId) return m;
-            const order = m.scenes.length;
-            created = {
-              ...scene,
-              id,
-              order,
-              status: scene.status ?? "draft",
-              mood: (scene.mood as SceneMood) ?? "neutral",
-              characterIds: scene.characterIds ?? [],
-            };
-            return {
-              ...m,
-              scenes: [...m.scenes, created!],
-              updatedAt: new Date().toISOString(),
-            };
-          }),
-        }));
-        return created!;
-      },
-
-      updateScene: (movieId, sceneId, patch) =>
-        set((s) => ({
-          movies: s.movies.map((m) =>
-            m.id === movieId
-              ? {
-                  ...m,
-                  scenes: m.scenes.map((sc) =>
-                    sc.id === sceneId ? { ...sc, ...patch } : sc,
-                  ),
-                  updatedAt: new Date().toISOString(),
-                }
-              : m,
-          ),
-        })),
-
-      removeScene: (movieId, sceneId) =>
-        set((s) => ({
-          movies: s.movies.map((m) => {
-            if (m.id !== movieId) return m;
-            const remaining = m.scenes
-              .filter((sc) => sc.id !== sceneId)
-              .map((sc, idx) => ({ ...sc, order: idx }));
-            return {
-              ...m,
-              scenes: remaining,
-              updatedAt: new Date().toISOString(),
-            };
-          }),
-        })),
-
-      reorderScenes: (movieId, sceneIds) =>
-        set((s) => ({
-          movies: s.movies.map((m) => {
-            if (m.id !== movieId) return m;
-            const map = new Map(m.scenes.map((sc) => [sc.id, sc]));
-            const reordered = sceneIds
-              .map((id, index) => {
-                const sc = map.get(id);
-                return sc ? { ...sc, order: index } : null;
-              })
-              .filter(Boolean) as Scene[];
-            return {
-              ...m,
-              scenes: reordered,
-              updatedAt: new Date().toISOString(),
-            };
-          }),
-        })),
-
       deleteMovie: (id) =>
         set((s) => ({
           movies: s.movies.filter((m) => m.id !== id),
@@ -235,12 +106,118 @@ export const useMovieStore = create<MovieState>()(
             s.currentMovieId === id ? null : s.currentMovieId,
         })),
 
-      applyScriptResult: (movieId, result, opts) => {
-        const replaceCast = opts?.replaceCast !== false;
-        const replaceScenes = opts?.replaceScenes !== false;
+      addCharacter: (movieId, char) =>
         set((s) => ({
           movies: s.movies.map((m) => {
             if (m.id !== movieId) return m;
+            const full: Character = {
+              id: char.id || uid(),
+              name: char.name || "",
+              role: char.role || "",
+              appearance: char.appearance || "",
+              personality: char.personality,
+              referenceImageLocal: char.referenceImageLocal,
+              referenceImageUrl: char.referenceImageUrl,
+            };
+            return {
+              ...m,
+              characters: [...m.characters, full],
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      updateCharacter: (movieId, characterId, patch) =>
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            return {
+              ...m,
+              characters: m.characters.map((c) =>
+                c.id === characterId ? { ...c, ...patch } : c,
+              ),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      removeCharacter: (movieId, characterId) =>
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            return {
+              ...m,
+              characters: m.characters.filter((c) => c.id !== characterId),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      addScene: (movieId, scene) =>
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            const order =
+              m.scenes.length === 0
+                ? 0
+                : Math.max(...m.scenes.map((x) => x.order)) + 1;
+            const full: Scene = {
+              id: uid(),
+              order,
+              title: scene.title || `Scene ${order + 1}`,
+              mood: scene.mood || "neutral",
+              dialogue: scene.dialogue,
+              narration: scene.narration,
+              gestureNotes: scene.gestureNotes,
+              visualPrompt: scene.visualPrompt,
+              characterIds: scene.characterIds || [],
+              imageTopLocal: scene.imageTopLocal,
+              imageBottomLocal: scene.imageBottomLocal,
+              audioLocal: scene.audioLocal,
+              externalVideoLocal: scene.externalVideoLocal,
+              estimatedDurationSec: scene.estimatedDurationSec,
+            };
+            return {
+              ...m,
+              scenes: [...m.scenes, full],
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      updateScene: (movieId, sceneId, patch) =>
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            return {
+              ...m,
+              scenes: m.scenes.map((sc) =>
+                sc.id === sceneId ? { ...sc, ...patch } : sc,
+              ),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      removeScene: (movieId, sceneId) =>
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            return {
+              ...m,
+              scenes: m.scenes.filter((sc) => sc.id !== sceneId),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      applyScriptResult: (movieId, result, opts) =>
+        set((s) => ({
+          movies: s.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            const replaceCast = opts?.replaceCast !== false;
+            const replaceScenes = opts?.replaceScenes !== false;
+
             const characters: Character[] = replaceCast
               ? result.characters.map((c) => ({
                   id: uid(),
@@ -251,59 +228,45 @@ export const useMovieStore = create<MovieState>()(
                 }))
               : m.characters;
 
-            // Auto-cast each scene from explicit "Character: dialogue" speaker names.
-            // If the scene has no recognizable speaker tag, retain the full cast as a safe fallback.
             const allCastIds = characters.map((c) => c.id);
 
             const scenes: Scene[] = replaceScenes
               ? result.scenes.map((sc, order) => {
-                  const speakerNames = (sc.dialogue || "")
-                    .split(/\n+/)
-                    .map((line) => line.match(/^([^:]{1,40}):\s*.+$/)?.[1]?.trim().toLocaleLowerCase())
-                    .filter((name): name is string => Boolean(name));
                   const matchedIds = characters
-                    .filter((character) => speakerNames.includes(character.name.toLocaleLowerCase()))
-                    .map((character) => character.id);
+                    .filter((c) =>
+                      (sc.dialogue || "")
+                        .toLowerCase()
+                        .includes(c.name.toLowerCase()),
+                    )
+                    .map((c) => c.id);
                   return {
                     id: uid(),
                     order,
                     title: sc.title,
                     mood: sc.mood,
                     dialogue: sc.dialogue,
+                    narration: sc.narration,
                     gestureNotes: sc.gestureNotes,
                     visualPrompt: sc.visualPrompt,
-                    narration: sc.narration,
+                    characterIds:
+                      matchedIds.length > 0 ? matchedIds : allCastIds.slice(0, 2),
                     estimatedDurationSec: sc.estimatedDurationSec,
-                    status: "draft" as const,
-                    characterIds: matchedIds.length ? matchedIds : allCastIds,
                   };
                 })
               : m.scenes;
+
             return {
               ...m,
               title: result.title || m.title,
               synopsis: result.synopsis || m.synopsis,
               characters,
               scenes,
-              status: "planning" as const,
               updatedAt: new Date().toISOString(),
+              status: "scripted" as const,
             };
           }),
-        }));
-      },
+        })),
     }),
-    {
-      name: "bharat-ai-movies",
-      partialize: (s) => ({
-        movies: s.movies,
-        currentMovieId: s.currentMovieId,
-      }),
-    },
+    { name: "bharat-ai-movies" },
   ),
 );
-
-export function useCurrentMovie() {
-  const currentMovieId = useMovieStore((s) => s.currentMovieId);
-  const movies = useMovieStore((s) => s.movies);
-  return movies.find((m) => m.id === currentMovieId) ?? null;
-}
