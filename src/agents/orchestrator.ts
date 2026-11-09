@@ -79,7 +79,6 @@ export async function runMoviePipeline(
           idea: input.synopsis || input.title,
           language: input.language,
           targetDuration: input.targetDuration,
-          genres: input.genres,
         });
       }
       pipeline.script = "succeeded";
