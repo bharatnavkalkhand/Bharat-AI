@@ -20,7 +20,7 @@ export interface DirectorControlsProps {
     slot: "top" | "bottom",
     imageDataOrUrl: string,
   ) => void;
-  onImportExternal?: (sceneId: string, dataUrl: string) => void;
+  onGeneratedVideo?: (sceneId: string, dataUrl: string) => void;
   use3dAvatar?: boolean;
   on3dAvatarChange?: (v: boolean) => void;
   workerUrl?: string;
@@ -60,7 +60,7 @@ export function DirectorControls({
   facePerformance,
   onFacePerformanceChange,
   onStatus,
-  onImportExternal,
+  onGeneratedVideo,
   use3dAvatar = false,
   on3dAvatarChange,
   workerUrl = "",
@@ -165,7 +165,7 @@ export function DirectorControls({
               : "Lip video ready",
           );
           const sid = firstSceneId();
-          if (sid && onImportExternal) onImportExternal(sid, st.videoUrl);
+          if (sid && onGeneratedVideo) onGeneratedVideo(sid, st.videoUrl);
           setLipBusy(false);
           return;
         }
@@ -231,7 +231,7 @@ export function DirectorControls({
               : "Comfy video ready — on scene",
           );
           const sid = firstSceneId();
-          if (sid && onImportExternal) onImportExternal(sid, st.videoUrl);
+          if (sid && onGeneratedVideo) onGeneratedVideo(sid, st.videoUrl);
           setComfyBusy(false);
           return;
         }
