@@ -18,9 +18,9 @@ This is the supported **zero-paid** path. No Flixier reverse-engineering. Public
 | Script | Browser engine + optional Groq free-tier | No key required for browser path |
 | Voice | Browser Web Speech | System voices (not true clones) |
 | Still art | Web image search + external import | Civitai / Roar guided import |
-| Short AI video | Wan 2.1 1.3B worker source is included | Requires a separately running compatible free worker; not validated against a live Space yet |
+| Short AI video | Wan 2.1 1.3B worker source is included | Bharat AI sends scene prompts to a separately running compatible free worker; no manual video attachment is needed |
 | Lip-sync upgrade | MuseTalk / LivePortrait Space | Optional; see `workers/musetalk/` |
-| Preview / export | Client scene player + MediaPipe face overlay | Works without any GPU |
+| Preview / export | Client scene player + MediaPipe face overlay | Storyboard fallback only; not diffusion video |
 
 ### Setup free HF video worker (recommended)
 
@@ -39,7 +39,7 @@ Optional lip-sync Space: set `localStorage.setItem('bharat_musetalk_space', 'htt
 
 ### What is still storyboard-only
 
-Without a worker URL, Video Agent returns a timed storyboard preview (gradients + prompts). That is intentional so the app never pretends unlimited free video.
+Without a running generation worker, Video Agent can only return a timed storyboard preview (gradients + prompts). The app never pretends that a storyboard is generated AI footage.
 
 ## Multi-agent architecture
 
