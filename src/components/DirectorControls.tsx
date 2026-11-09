@@ -321,7 +321,7 @@ export function DirectorControls({
 
       <div className="mt-3 space-y-1">
         <p className="text-[10px] font-medium text-muted">
-          C · In-app AI video engine (local ComfyUI / Wan)
+          C · In-app AI video engine (ComfyUI bridge / Wan)
         </p>
         <input
           value={comfyUrl}
@@ -329,7 +329,7 @@ export function DirectorControls({
             setComfyUrl(e.target.value);
             setComfyUiUrl(e.target.value);
           }}
-          placeholder="http://127.0.0.1:8188"
+          placeholder="http://127.0.0.1:8787"
           className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
         />
         <button
