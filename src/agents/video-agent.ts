@@ -1,5 +1,6 @@
 import type { AgentRunInput, AgentRunResult } from "./types";
 import { generateSilentClip } from "./hf-zerogpu-worker";
+import { createComfyUiWorker, getComfyUiUrl } from "./comfyui-worker";
 
 export interface StoryboardFrame {
   sceneId: string;
@@ -76,6 +77,74 @@ export async function runVideoAgent(
   const isHuggingFaceSpace =
     /(^https?:\/\/[^/]+\.hf\.space$)/i.test(normalizedWorkerUrl) ||
     /huggingface\.co\/spaces\//i.test(normalizedWorkerUrl);
+
+  // Prefer the in-app ComfyUI generation path when a local worker is configured.
+  // This submits scene prompts directly to the generation worker; it does not ask
+  // the user to download and attach finished videos from another website.
+  const comfyUrl = getComfyUiUrl();
+  if (comfyUrl) {
+    const worker = createComfyUiWorker({ baseUrl: comfyUrl, mode: "auto" });
+    const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
+    const clips: Array<{ sceneId: string; title: string; videoUrl: string; durationSec: number }> = [];
+    const failures: string[] = [];
+    for (const scene of sortedScenes) {
+      const cast = input.characters
+        .filter((c) => !scene.characterIds?.length || scene.characterIds.includes(c.id))
+        .map((c) => [c.name, c.role, c.appearance].filter(Boolean).join(", "))
+        .filter(Boolean).join("; ");
+      const prompt = [
+        scene.visualPrompt || scene.title,
+        scene.mood ? `Mood: ${scene.mood}` : "",
+        cast ? `Keep character appearance consistent: ${cast}` : "",
+        scene.dialogue || scene.narration ? `Performance and dialogue context: ${scene.dialogue || scene.narration}` : "",
+        "Photorealistic live-action cinematic video, realistic human anatomy, natural full-body action, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, no cartoon, no illustration, no text, no subtitles.",
+      ].filter(Boolean).join(". ");
+      try {
+        const { remoteJobId } = await worker.submit({
+          movieId: input.movieId,
+          sceneId: scene.id,
+          prompt,
+          aspectRatio: "16:9",
+          width: 832,
+          height: 480,
+          durationSec: 4,
+          seed: 4200 + scene.order,
+        }, `bharat-${input.movieId}-${scene.id}-${Date.now()}`);
+        let result: Awaited<ReturnType<typeof worker.status>> | null = null;
+        for (let attempt = 0; attempt < 180; attempt += 1) {
+          result = await worker.status(remoteJobId);
+          if (result.status === "succeeded" || result.status === "failed") break;
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        if (result?.status === "succeeded") {
+          clips.push({ sceneId: scene.id, title: scene.title, videoUrl: result.videoUrl, durationSec: 4 });
+        } else {
+          failures.push(`${scene.title}: ${result?.status === "failed" ? result.error : "generation timed out"}`);
+          break;
+        }
+      } catch (error) {
+        failures.push(`${scene.title}: ${error instanceof Error ? error.message : "generation failed"}`);
+        break;
+      }
+    }
+    if (clips.length) {
+      return {
+        agentId: "video",
+        status: failures.length ? "failed" : "succeeded",
+        message: `Generated ${clips.length} scene video(s) inside Bharat AI with ComfyUI.${failures.length ? ` Remaining generation stopped: ${failures[0]}` : ""}`,
+        outputText: clips.map((clip) => `${clip.title}: ${clip.videoUrl}`).join("\\n"),
+        data: { board, mode: "comfyui-generated", clips, clipUrl: clips[0].videoUrl, partialError: failures[0] },
+        durationMs: performance.now() - t0,
+      };
+    }
+    return {
+      agentId: "video",
+      status: "failed",
+      message: `Bharat AI could not generate a video through ComfyUI: ${failures[0] || "No clip returned"}. Check that the ComfyUI generation bridge is running and has a valid Wan video workflow.`,
+      data: { board, mode: "generation-error", workerError: failures[0] },
+      durationMs: performance.now() - t0,
+    };
+  }
 
   if (normalizedWorkerUrl && isHuggingFaceSpace) {
     // Generate a very small number of short silent clips. The worker reserves
