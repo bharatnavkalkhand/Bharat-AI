@@ -15,9 +15,8 @@
  * Honest limits:
  * - Requires a machine with GPU running ComfyUI
  * - Browser must reach the URL (localhost on same device, or LAN + CORS)
- * - Workflow API shape varies; this adapter supports:
- *     A) Generic HTTP worker (/quota /submit /status) — preferred bridge
- *     B) Native ComfyUI /prompt + /history (best-effort)
+ * - Workflow API shape varies. This adapter requires a real HTTP generation bridge
+ *   exposing /submit and /status/:id; a plain ComfyUI UI URL is not sufficient.
  */
 
 import {
