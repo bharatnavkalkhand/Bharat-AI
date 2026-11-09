@@ -195,13 +195,17 @@ export function ProducePage() {
     stopRef.current = { stopped: false };
     setBusyCinema(true);
     setCaption("");
-    setStatus(record ? "Recording…" : "Playing…");
+    setStatus(record ? "Rendering 120-second local scene assembly…" : "Playing preview…");
     try {
       const result = await playScenesOnCanvas(
         canvas, scenes,
         {
           language: movie.language, headline: headline.trim() || movie.title,
-          width: record ? 540 : 360, height: record ? 676 : 450, record, embedAudio: true,
+          width: record ? 540 : 360, height: record ? 676 : 450, record,
+          targetDurationSec: record ? 120 : undefined,
+          // Web Speech is not part of the canvas recording stream. Keep recorded
+          // duration deterministic; uploaded scene audio needs a separate mux stage.
+          embedAudio: !record,
           motionIntensity: motion, facePerformance: facePerformance || use3dAvatar,
           layout: dualScreen ? "dual" : "single", use3dAvatar, bodyPerformance: true,
           onCaption: setCaption, onRecordProgress: setStatus,
@@ -211,7 +215,9 @@ export function ProducePage() {
       if (record && result.blob) {
         const safe = movie.title.replace(/[^\w\u0900-\u097F]+/g, "_").slice(0, 40) || "bharat_ai";
         const name = `${safe}.${result.extension}`;
-        setStatus(`Ready: ${name}`);
+        setStatus(
+          `Ready: ${name} — approximately 120 seconds, ${result.hadAudioTrack ? "with audio track" : "silent local scene assembly"}.`,
+        );
         downloadBlob(result.blob, name);
       } else if (!record) setStatus("Playback finished.");
     } catch (e) {
@@ -263,7 +269,7 @@ export function ProducePage() {
         <p className="mt-1 leading-relaxed text-muted">
           {clipUrl
             ? "Wan 2.1 returned a real silent AI-generated scene clip. The full-film export below is assembled locally from your scene assets and narration."
-            : "No Wan 2.1 clip has been returned in this session. The preview/export uses storyboard and scene assets; it must not be described as model-generated footage."}
+            : "No Wan 2.1 clip has been returned in this session. The 2-minute export is a locally rendered scene animation from available artwork/storyboard assets, not two minutes of diffusion-generated footage."}
         </p>
       </section>
 
@@ -328,7 +334,7 @@ export function ProducePage() {
           </button>
           <button type="button" disabled={busy} onClick={() => void runCinema(true)}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent py-3 text-sm font-bold text-black disabled:opacity-50">
-            <Download className="h-4 w-4" /> Export local MP4
+            <Download className="h-4 w-4" /> Export 2-min scene video
           </button>
         </div>
         <div className="mx-auto mt-2 flex max-w-lg gap-2 sm:max-w-2xl">
