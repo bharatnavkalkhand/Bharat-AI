@@ -172,7 +172,7 @@ export function DirectorControls({
         if (st.status === "failed") throw new Error(st.error || "Lip failed");
         tries += 1;
         if (tries % 5 === 0) {
-          onStatus?.(`Lip… ${Math.round((st.progress || 0.3) * 100)}%`);
+          onStatus?.(`Lip… ${Math.round((('progress' in st ? st.progress : undefined) || 0.3) * 100)}%`);
         }
       }
       throw new Error("Lip timeout");
