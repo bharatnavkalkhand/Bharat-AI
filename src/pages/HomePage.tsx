@@ -591,7 +591,7 @@ export function HomePage() {
                       <div style={{ fontWeight: 700, fontSize: 14, color: "#f0ede8" }}>{lang === "hi" ? tpl.titleHi : tpl.titleEn}</div>
                       <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, color: "#a09898", marginTop: 2 }}>{lang === "hi" ? tpl.titleEn : tpl.titleHi}</div>
                       <div style={{ fontSize: 12, color: "#a09898", marginTop: 8, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                        {lang === "hi" ? tpl.descHi : tpl.descEn}
+                        {lang === "hi" ? tpl.ideaHi : tpl.ideaEn}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
                         <button onClick={(e) => { e.stopPropagation(); goCreate(); }} style={{ fontSize: 12, fontWeight: 700, color: "#e8a022", background: "rgba(232,160,34,.12)", border: "none", padding: "5px 12px", borderRadius: 999, cursor: "pointer" }}>
