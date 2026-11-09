@@ -44,7 +44,7 @@ We take their **best product patterns** and attach them as **self-serve workers*
 4. In Bharat AI → Produce → paste URL into **C · Local ComfyUI**.
 5. Add cast face photo → **Image	o video (Comfy)**.
 
-Same-device browser can reach localhost. Phone browser cannot see PC localhost unless you use LAN IP + CORS proxy.
+The bridge must be reachable from the browser and allow the app origin via CORS. On a phone, use the PC LAN address instead of 127.0.0.1. A GPU machine must run ComfyUI and the bridge; Vercel itself does not provide a free video GPU.
 
 ## Legal
 
