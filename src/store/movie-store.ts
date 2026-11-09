@@ -163,6 +163,7 @@ export const useMovieStore = create<
                 : Math.max(...m.scenes.map((x) => x.order)) + 1;
             const full: Scene = {
               id: uid(),
+              status: "draft",
               order,
               title: scene.title || `Scene ${order + 1}`,
               mood: scene.mood || "neutral",
@@ -241,6 +242,7 @@ export const useMovieStore = create<
                     .map((c) => c.id);
                   return {
                     id: uid(),
+                    status: "draft",
                     order,
                     title: sc.title,
                     mood: sc.mood,
@@ -262,7 +264,7 @@ export const useMovieStore = create<
               characters,
               scenes,
               updatedAt: new Date().toISOString(),
-              status: "scripted" as const,
+              status: "planning" as const,
             };
           }),
         })),
