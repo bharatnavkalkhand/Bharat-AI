@@ -235,9 +235,18 @@ export async function playScenesOnCanvas(
   const { mimeType, extension } = pickRecorderMime();
   let recorder: MediaRecorder | null = null;
   const chunks: Blob[] = [];
+  let audioContext: AudioContext | null = null;
+  let audioDestination: MediaStreamAudioDestinationNode | null = null;
+  let hasEmbeddedAudio = false;
   if (options.record) {
     try {
       const stream = canvas.captureStream(30);
+      if (scenes.some((scene) => Boolean(scene.audioUrl)) && "AudioContext" in window) {
+        audioContext = new AudioContext();
+        audioDestination = audioContext.createMediaStreamDestination();
+        const audioTrack = audioDestination.stream.getAudioTracks()[0];
+        if (audioTrack) stream.addTrack(audioTrack);
+      }
       recorder = new MediaRecorder(stream, { mimeType });
       recorder.ondataavailable = (e) => {
         if (e.data.size) chunks.push(e.data);
@@ -245,6 +254,9 @@ export async function playScenesOnCanvas(
       recorder.start(200);
     } catch {
       recorder = null;
+      void audioContext?.close().catch(() => undefined);
+      audioContext = null;
+      audioDestination = null;
     }
   }
 
@@ -257,6 +269,22 @@ export async function playScenesOnCanvas(
     const imgTop = await loadImg(sc.imageTop);
     const imgBottom = layout === "dual" ? await loadImg(sc.imageBottom) : null;
     const lip = await getLipFor(sc.imageTop, imgTop);
+    let sceneAudio: HTMLAudioElement | null = null;
+    if (options.record && audioContext && audioDestination && sc.audioUrl) {
+      try {
+        await audioContext.resume();
+        sceneAudio = new Audio(sc.audioUrl);
+        sceneAudio.preload = "auto";
+        const source = audioContext.createMediaElementSource(sceneAudio);
+        source.connect(audioDestination);
+        source.connect(audioContext.destination);
+        await sceneAudio.play();
+        hasEmbeddedAudio = true;
+      } catch {
+        sceneAudio?.pause();
+        sceneAudio = null;
+      }
+    }
     const t0 = performance.now();
     const dur = options.targetDurationSec
       ? options.targetDurationSec / scenes.length
@@ -291,6 +319,11 @@ export async function playScenesOnCanvas(
       };
       requestAnimationFrame(tick);
     });
+    if (sceneAudio) {
+      sceneAudio.pause();
+      sceneAudio.currentTime = 0;
+      sceneAudio.src = "";
+    }
     if (options.embedAudio !== false && caption) {
       await speakBrowser(caption, options.language, "", options.voiceGender);
     }
@@ -305,5 +338,6 @@ export async function playScenesOnCanvas(
   }
 
   const blob = chunks.length > 0 ? new Blob(chunks, { type: mimeType }) : null;
-  return { blob, mimeType, extension, hadAudioTrack: false, usedRhubarb: false };
+  if (audioContext) await audioContext.close().catch(() => undefined);
+  return { blob, mimeType, extension, hadAudioTrack: hasEmbeddedAudio, usedRhubarb: false };
 }
