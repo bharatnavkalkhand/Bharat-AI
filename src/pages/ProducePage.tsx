@@ -324,7 +324,7 @@ export function ProducePage() {
           if (!movieId) return;
           updateScene(movieId, sceneId, slot === "top" ? { imageTopLocal: dataUrl } : { imageBottomLocal: dataUrl });
         }}
-        onImportExternal={(sceneId, videoUrl) => {
+        onGeneratedVideo={(sceneId, videoUrl) => {
           setClipUrl(videoUrl);
           setGeneratedClips([{ sceneId, title: "Generated scene", videoUrl, durationSec: 4 }]);
         }}
