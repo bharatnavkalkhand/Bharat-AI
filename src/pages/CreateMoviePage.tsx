@@ -63,7 +63,6 @@ export function CreateMoviePage() {
           idea: idea.trim() || movie.title,
           language: movie.language,
           targetDuration: movie.targetDuration,
-          genres: movie.genres ?? [],
         });
         applyScriptResult(movie.id, script, { replaceCast: true, replaceScenes: true });
         navigate(`/movie/${movie.id}/produce`);
