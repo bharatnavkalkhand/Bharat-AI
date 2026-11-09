@@ -238,7 +238,7 @@ export function DirectorControls({
         if (st.status === "failed") throw new Error(st.error || "Comfy failed");
         tries += 1;
         if (tries % 4 === 0) {
-          onStatus?.(`Comfy… ${Math.round((st.progress || 0.3) * 100)}%`);
+          onStatus?.(`Comfy… ${Math.round((('progress' in st ? st.progress : undefined) || 0.3) * 100)}%`);
         }
       }
       throw new Error("ComfyUI timeout");
