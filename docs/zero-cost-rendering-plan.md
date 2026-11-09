@@ -9,7 +9,7 @@ The core app must not require paid API credits, paid tokens, a subscription, or 
 - Browser Web Speech is available where supported; it is not voice cloning.
 - The Wan 2.1 1.3B ZeroGPU worker exists under workers/hf-zerogpu/.
 - The frontend adapter speaks the Gradio queue API.
-- The current video agent generates at most three short clips per run and reports a real failure if the worker cannot return a clip.
+- The current video agent attempts at most one short clip per run. The worker reserves 120–240 GPU seconds per request; this is a best-effort free-tier path, not a route to two minutes of diffusion footage.
 - The worker has not been validated against a live deployed Space in this repository. Source code alone does not prove GPU inference works.
 - The existing application can produce a storyboard/local preview without GPU; that is not equivalent to photorealistic model-generated footage.
 
@@ -36,13 +36,13 @@ A fully diffusion-generated two-minute film is a different and much heavier comp
 5. Produce a JSON render manifest with per-segment provenance and exact durations.
 6. Add resume/retry behavior so a failed GPU call does not lose already generated scenes.
 7. Validate model inference on a live worker before marking the worker as operational.
-8. Run a complete 120-second export test and verify duration, audio/video sync, playable MP4 and manifest before calling the requested two-minute deliverable complete.
+8. Run a complete 120-second local scene export test and verify duration, playable browser recording and audio-track provenance. A true MP4 mux and two minutes of diffusion-generated footage remain separate deliverables.
 
 ## Acceptance criteria
 - No mandatory paid key, token, subscription or API.
 - No secrets in client-side code.
 - No fabricated GPU quota or progress.
 - A missing worker produces an explicit blocked state, not a fake success.
-- A successful render produces a downloadable MP4 and a provenance manifest.
+- A successful local scene render produces a downloadable browser-recorded video; the current browser recorder may produce WebM rather than MP4.
 - The 120-second deliverable is checked for actual duration and playable media.
 - Every generation/export status distinguishes model-generated clips from local assembly.
