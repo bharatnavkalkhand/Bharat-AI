@@ -78,11 +78,11 @@ export async function runVideoAgent(
     /huggingface\.co\/spaces\//i.test(normalizedWorkerUrl);
 
   if (normalizedWorkerUrl && isHuggingFaceSpace) {
-    // Generate short silent clips scene by scene, spending free ZeroGPU quota
-    // carefully. HF free tier is ~5 GPU-min/day; a 2-second clip costs ~45s.
-    // We cap at MAX_SCENES_TO_GENERATE so we don't blow the daily budget on a
-    // long storyboard.  Remaining scenes keep their storyboard placeholder.
-    const MAX_SCENES_TO_GENERATE = 3;
+    // Generate a very small number of short silent clips. The worker reserves
+    // 120s for 17 frames and 180s for 33 frames; a free personal ZeroGPU quota
+    // is limited, so this is best-effort and cannot render a two-minute film.
+    // Remaining scenes stay clearly marked as storyboard/local-assembly assets.
+    const MAX_SCENES_TO_GENERATE = 1;
     const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
     const scenesToGenerate = sortedScenes.slice(0, MAX_SCENES_TO_GENERATE);
 
