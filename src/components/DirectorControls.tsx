@@ -150,7 +150,7 @@ export function DirectorControls({
           width: 720,
           height: 1280,
           seed: Date.now() % 100000,
-          referenceImageUrls: [face],
+          referenceImageUrls: face ? [face] : [],
         },
         key,
       );
@@ -197,14 +197,6 @@ export function DirectorControls({
     setComfyUiUrl(url);
     setComfyUrl(url);
     const face = firstFace();
-    if (!face) {
-      onStatus?.(
-        movie.language === "hi"
-          ? "Image	o video ke liye face/still photo chahiye"
-          : "Need a still/face photo for image-to-video",
-      );
-      return;
-    }
     setComfyBusy(true);
     onStatus?.(
       movie.language === "hi"
@@ -329,7 +321,7 @@ export function DirectorControls({
 
       <div className="mt-3 space-y-1">
         <p className="text-[10px] font-medium text-muted">
-          C · Local ComfyUI (StabilityMatrix / Comfy — Pixelle I2V path)
+          C · In-app AI video engine (local ComfyUI / Wan)
         </p>
         <input
           value={comfyUrl}
@@ -346,13 +338,12 @@ export function DirectorControls({
           className="w-full rounded-lg border border-sky-500/40 bg-sky-500/10 py-2 text-xs font-semibold text-sky-300 disabled:opacity-40"
           onClick={() => void runComfyImg2Vid()}
         >
-          {comfyBusy ? "ComfyUI generating…" : "Image → video (Comfy / motion)"}
+          {comfyBusy ? "ComfyUI generating…" : "Generate scene video inside Bharat AI"}
         </button>
       </div>
 
       <p className="mt-2 text-[10px] leading-relaxed text-muted">
-        <strong className="text-fg">Self-serve:</strong> HF Space ya local
-        ComfyUI URL ek baar. Phir buttons se lips / motion — daily Kaggle nahi.
+        <strong className="text-fg">Self-serve:</strong> Connect a Wan / ComfyUI generation worker once. Then Bharat AI sends scene prompts and receives generated video clips — no downloading and re-attaching clips from another app.
         Docs: docs/integrations/comfyui-pixelle.md
       </p>
     </section>
