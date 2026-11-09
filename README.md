@@ -5,18 +5,20 @@ Mobile-first AI movie **production pipeline** for Indian users. Design goal: **�
 **Live:** https://bharat-ai-chi.vercel.app  
 **Repo:** https://github.com/bharatnavkalkhand/Bharat-AI
 
+**Design system:** [DESIGN.md](./DESIGN.md) · **Zero-cost render architecture:** [docs/zero-cost-rendering-plan.md](./docs/zero-cost-rendering-plan.md)
+
 ## Free AI video path (no credits / tokens)
 
 This is the supported **zero-paid** path. No Flixier reverse-engineering. Public patterns + open-source workers only.
 
-### What works today at ₹0
+### Zero-paid-cost capabilities and prerequisites
 
 | Stage | Free path | Notes |
 |-------|-----------|--------|
 | Script | Browser engine + optional Groq free-tier | No key required for browser path |
 | Voice | Browser Web Speech | System voices (not true clones) |
 | Still art | Web image search + external import | Civitai / Roar guided import |
-| Short AI video | HF ZeroGPU Wan 2.1 worker | Deploy `workers/hf-zerogpu/` as a Space |
+| Short AI video | Wan 2.1 1.3B worker source is included | Requires a separately running compatible free worker; not validated against a live Space yet |
 | Lip-sync upgrade | MuseTalk / LivePortrait Space | Optional; see `workers/musetalk/` |
 | Preview / export | Client scene player + MediaPipe face overlay | Works without any GPU |
 
