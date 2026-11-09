@@ -28,11 +28,14 @@ function framesToSeconds(frames: number): number {
   return frames / 16;
 }
 
-/** Rough GPU-seconds estimate for ranking (empirical headroom) */
+/**
+ * Estimated reservation used by the current Space worker. Keep this in sync
+ * with workers/hf-zerogpu/app.py; it is not measured runtime or remaining quota.
+ */
 export function estimateZeroGpuSeconds(frames: number): number {
-  if (frames <= 17) return 45;
-  if (frames <= 33) return 75;
-  return 110;
+  if (frames <= 17) return 120;
+  if (frames <= 33) return 180;
+  return 240;
 }
 
 interface GradioJob {
