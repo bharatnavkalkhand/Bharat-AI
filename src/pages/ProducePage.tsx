@@ -238,8 +238,7 @@ export function ProducePage() {
       <div className="mb-5 flex gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3.5 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p className="leading-relaxed">
-          <strong className="text-fg">Free path (₹0 / no tokens):</strong> deploy{" "}
-          <code className="text-[10px]">workers/hf-zerogpu</code> as an HF ZeroGPU Space, paste URL in A below, run pipeline. Short silent clips. See FREE_VIDEO_PATH.md.
+          <strong className="text-fg">Zero-paid-cost workflow:</strong> Script and local scene assembly run without paid tokens. Wan 2.1 model clips require an available worker; public free GPU quotas are limited and are never guaranteed. The browser export is a locally assembled MP4, not two minutes of diffusion-generated footage.
         </p>
       </div>
 
@@ -259,9 +258,18 @@ export function ProducePage() {
         <p className="px-1 text-xs text-muted">{pipeline.lastMessage}</p>
       </section>
 
+      <section className="mb-5 rounded-xl border border-border bg-card px-3.5 py-3 text-xs">
+        <p className="font-semibold text-fg">Output provenance</p>
+        <p className="mt-1 leading-relaxed text-muted">
+          {clipUrl
+            ? "Wan 2.1 returned a real silent AI-generated scene clip. The full-film export below is assembled locally from your scene assets and narration."
+            : "No Wan 2.1 clip has been returned in this session. The preview/export uses storyboard and scene assets; it must not be described as model-generated footage."}
+        </p>
+      </section>
+
       {clipUrl ? (
         <section className="card-pro mb-5 space-y-2 p-3">
-          <h2 className="text-sm font-semibold">Free AI video clip</h2>
+          <h2 className="text-sm font-semibold">Wan 2.1 AI-generated silent clip</h2>
           <video src={clipUrl} controls playsInline className="w-full rounded-lg" />
           <a href={clipUrl} target="_blank" rel="noreferrer" className="text-xs text-accent">Open MP4</a>
         </section>
@@ -320,7 +328,7 @@ export function ProducePage() {
           </button>
           <button type="button" disabled={busy} onClick={() => void runCinema(true)}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent py-3 text-sm font-bold text-black disabled:opacity-50">
-            <Download className="h-4 w-4" /> Export
+            <Download className="h-4 w-4" /> Export local MP4
           </button>
         </div>
         <div className="mx-auto mt-2 flex max-w-lg gap-2 sm:max-w-2xl">
