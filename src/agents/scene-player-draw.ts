@@ -46,6 +46,8 @@ export interface PlayerOptions {
   onCaption?: (text: string) => void;
   onScene?: (index: number, total: number) => void;
   record?: boolean;
+  /** Total target runtime for recorded local scene assembly. */
+  targetDurationSec?: number;
   onRecordProgress?: (msg: string) => void;
   embedAudio?: boolean;
   voiceGender?: "auto" | "male" | "female";
