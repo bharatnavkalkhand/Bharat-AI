@@ -200,11 +200,11 @@ export function DirectorControls({
     setComfyBusy(true);
     onStatus?.(
       movie.language === "hi"
-        ? "ComfyUI image	o video… (local GPU)"
-        : "ComfyUI image-to-video… (local GPU)",
+        ? "ComfyUI text/image-to-video… (local GPU)"
+        : "ComfyUI text/image-to-video… (local GPU)",
     );
     try {
-      const worker = createComfyUiWorker({ baseUrl: url, mode: "img2vid" });
+      const worker = createComfyUiWorker({ baseUrl: url, mode: face ? "img2vid" : "txt2vid" });
       const key = `comfy-${movieId || "m"}-${Date.now()}`;
       const { remoteJobId } = await worker.submit(
         {
@@ -216,7 +216,7 @@ export function DirectorControls({
           width: 720,
           height: 1280,
           seed: Date.now() % 100000,
-          referenceImageUrls: [face],
+          referenceImageUrls: face ? [face] : [],
         },
         key,
       );
@@ -284,12 +284,12 @@ export function DirectorControls({
 
       <div className="mt-3 space-y-1">
         <p className="text-[10px] font-medium text-muted">
-          A · Free HF video worker (Wan short clips)
+          Optional custom HF worker override (Wan)
         </p>
         <input
           value={workerUrl}
           onChange={(e) => onWorkerUrlChange?.(e.target.value)}
-          placeholder="https://xxxx.hf.space"
+          placeholder="Optional: your own HF Space URL"
           className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
         />
       </div>
@@ -338,12 +338,12 @@ export function DirectorControls({
           className="w-full rounded-lg border border-sky-500/40 bg-sky-500/10 py-2 text-xs font-semibold text-sky-300 disabled:opacity-40"
           onClick={() => void runComfyImg2Vid()}
         >
-          {comfyBusy ? "ComfyUI generating…" : "Generate scene video inside Bharat AI"}
+          {comfyBusy ? "ComfyUI generating…" : "Generate scene video from text / cast image"}
         </button>
       </div>
 
       <p className="mt-2 text-[10px] leading-relaxed text-muted">
-        <strong className="text-fg">Self-serve:</strong> Connect a Wan / ComfyUI generation worker once. Then Bharat AI sends scene prompts and receives generated video clips — no downloading and re-attaching clips from another app.
+        <strong className="text-fg">No setup required:</strong> when the custom worker field is blank, Generate AI video uses the shared public LTX ZeroGPU engine automatically. It creates real video from the scene prompt; shared free GPU capacity and daily anonymous quota are limited. A personal Wan Space can override the default.
         Docs: docs/integrations/comfyui-pixelle.md
       </p>
     </section>
