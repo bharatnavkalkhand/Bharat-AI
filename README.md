@@ -31,8 +31,8 @@ This is the supported **zero-paid** path. No Flixier reverse-engineering. Public
 5. Run the production pipeline. Video Agent will attempt a short silent AI clip via Gradio queue.
 
 Limits (honest):
-- Free ZeroGPU quota is limited (~5 GPU minutes / 24h window on personal accounts).
-- Clips are short (≈1–3 s silent 16:9). Full 5–10 min movie assembly is not free yet.
+- Free ZeroGPU quota is limited (the current personal allowance is documented as 5 GPU minutes per 24-hour quota window; availability and account eligibility can vary).
+- Clips are short (≈1–3 s silent 16:9). The worker reserves 120–240 GPU seconds per request, so expect at most one small request in a typical free quota window. This cannot render a two-minute diffusion-generated film.
 - First cold start is slow.
 
 Optional lip-sync Space: set `localStorage.setItem('bharat_musetalk_space', 'https://…')` after deploying a public MuseTalk/LivePortrait Gradio app. See `workers/musetalk/README.md`.
