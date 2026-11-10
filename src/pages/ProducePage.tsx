@@ -26,6 +26,60 @@ function appHostedVideoUrl(url: string, download = false): string {
   return `/api/video-proxy?${query.toString()}`;
 }
 
+
+const VIDEO_DB_NAME = "bharat-ai-video-cache";
+const VIDEO_DB_STORE = "clips";
+
+function openVideoDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(VIDEO_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(VIDEO_DB_STORE)) {
+        request.result.createObjectStore(VIDEO_DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveVideoBlob(key: string, blob: Blob): Promise<void> {
+  const db = await openVideoDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(VIDEO_DB_STORE, "readwrite");
+    tx.objectStore(VIDEO_DB_STORE).put(blob, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function loadVideoBlob(key: string): Promise<Blob | null> {
+  const db = await openVideoDb();
+  const blob = await new Promise<Blob | null>((resolve, reject) => {
+    const request = db.transaction(VIDEO_DB_STORE, "readonly").objectStore(VIDEO_DB_STORE).get(key);
+    request.onsuccess = () => resolve(request.result instanceof Blob ? request.result : null);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return blob;
+}
+
+async function cacheGeneratedClip(key: string, url: string): Promise<string> {
+  try {
+    const response = await fetch(url.startsWith("blob:") ? url : appHostedVideoUrl(url));
+    if (!response.ok) throw new Error(`MP4 download failed (${response.status})`);
+    const blob = await response.blob();
+    if (!blob.type.includes("video") && blob.size < 1000) throw new Error("Video file was empty.");
+    await saveVideoBlob(key, blob);
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.warn("Bharat AI: could not cache MP4 locally; keeping source link.", error);
+    return url.startsWith("blob:") ? url : appHostedVideoUrl(url);
+  }
+}
+
 function StagePill({ status }: { status: AgentStageStatus }) {
   const colors: Record<AgentStageStatus, string> = {
     idle: "bg-border text-muted", queued: "bg-border text-muted",
@@ -74,8 +128,25 @@ export function ProducePage() {
 
   useEffect(() => {
     if (!movie) return;
-    const saved = movie.scenes.filter((scene) => scene.outputUrl).map((scene) => ({ sceneId: scene.id, title: scene.title, videoUrl: scene.outputUrl!, durationSec: 5 }));
-    if (saved.length) { setGeneratedClips(saved); setClipUrl(saved[0].videoUrl); }
+    let cancelled = false;
+    const restore = async () => {
+      const saved = await Promise.all(movie.scenes.filter((scene) => scene.outputUrl).map(async (scene) => {
+        let videoUrl = scene.outputUrl!;
+        try {
+          const blob = await loadVideoBlob(`${movie.id}:${scene.id}`);
+          if (blob) videoUrl = URL.createObjectURL(blob);
+        } catch (error) {
+          console.warn("Bharat AI: local MP4 cache unavailable.", error);
+        }
+        return { sceneId: scene.id, title: scene.title, videoUrl, durationSec: 5 };
+      }));
+      if (!cancelled && saved.length) {
+        setGeneratedClips(saved);
+        setClipUrl(saved[0].videoUrl);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
   }, [movie?.id]);
 
   if (!movie) {
@@ -158,8 +229,12 @@ export function ProducePage() {
     let clipsToPersist: Array<{ sceneId: string; title: string; videoUrl: string; durationSec: number }> = [];
     if (Array.isArray(rawClips)) {
       const validClips = rawClips.filter((item): item is { sceneId: string; title: string; videoUrl: string; durationSec: number } => Boolean(item && typeof item === "object" && "videoUrl" in item && typeof item.videoUrl === "string"));
-      clipsToPersist = validClips.map((item) => ({ ...item, videoUrl: appHostedVideoUrl(item.videoUrl) }));
+      clipsToPersist = await Promise.all(validClips.map(async (item) => ({
+        ...item,
+        videoUrl: await cacheGeneratedClip(`${movieId}:${item.sceneId}`, item.videoUrl),
+      })));
       setGeneratedClips(clipsToPersist);
+      if (clipsToPersist[0]) setClipUrl(clipsToPersist[0].videoUrl);
     }
 
     if (result.script) {
@@ -307,7 +382,7 @@ export function ProducePage() {
             <div key={clip.sceneId} className="space-y-1">
               <p className="text-xs font-medium">{clip.title}</p>
               <video src={clip.videoUrl} controls playsInline preload="metadata" className="w-full rounded-lg" />
-              <a href={appHostedVideoUrl(new URL(clip.videoUrl, window.location.origin).searchParams.get("url") || clip.videoUrl, true)} className="inline-flex rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black">Download MP4</a>
+              <a href={clip.videoUrl.startsWith("blob:") ? clip.videoUrl : appHostedVideoUrl(new URL(clip.videoUrl, window.location.origin).searchParams.get("url") || clip.videoUrl, true)} download={`${clip.title || "bharat-ai-clip"}.mp4`} className="inline-flex rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black">Download MP4</a>
             </div>
           ))}
         </section>
@@ -315,7 +390,7 @@ export function ProducePage() {
         <section className="card-pro mb-5 space-y-2 p-3">
           <h2 className="text-sm font-semibold">AI-generated video clip</h2>
           <video src={clipUrl} controls playsInline preload="metadata" className="w-full rounded-lg" />
-          <a href={clipUrl} className="inline-flex rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black">Download MP4</a>
+          <a href={clipUrl.startsWith("blob:") ? clipUrl : appHostedVideoUrl(new URL(clipUrl, window.location.origin).searchParams.get("url") || clipUrl, true)} download="bharat-ai-clip.mp4" className="inline-flex rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black">Download MP4</a>
         </section>
       ) : null}
 
