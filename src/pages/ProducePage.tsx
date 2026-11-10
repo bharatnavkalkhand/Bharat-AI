@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft, Sparkles, Volume2, Clapperboard, Play, Square, Bot, Loader2, AlertCircle, Download, Youtube,
@@ -20,7 +20,7 @@ import {
 } from "@/agents/youtube-publish-bridge";
 import { cn } from "@/lib/utils";
 
-function StagePill({ status }: { status: AgentStageStatus }) {
+function appHostedVideoUrl(url: string, download = false): string {\n  const query = new URLSearchParams({ url });\n  if (download) query.set("download", "1");\n  return `/api/video-proxy?${query.toString()}`;\n}\n\nfunction StagePill({ status }: { status: AgentStageStatus }) {
   const colors: Record<AgentStageStatus, string> = {
     idle: "bg-border text-muted", queued: "bg-border text-muted",
     running: "bg-amber-500/20 text-amber-400", succeeded: "bg-emerald-500/20 text-emerald-400",
@@ -64,7 +64,7 @@ export function ProducePage() {
   const [facePerformance, setFacePerformance] = useState(true);
   const [use3dAvatar, setUse3dAvatar] = useState(false);
   const [motion, setMotion] = useState<MotionIntensity>("high");
-  const [headline, setHeadline] = useState("");
+  const [headline, setHeadline] = useState("");\n\n  useEffect(() => {\n    if (!movie) return;\n    const saved = movie.scenes.filter((scene) => scene.outputUrl).map((scene) => ({ sceneId: scene.id, title: scene.title, videoUrl: scene.outputUrl!, durationSec: 5 }));\n    if (saved.length) { setGeneratedClips(saved); setClipUrl(saved[0].videoUrl); }\n  }, [movie?.id]);
 
   if (!movie) {
     return (
@@ -145,7 +145,7 @@ export function ProducePage() {
     const rawClips = result.video?.data?.clips;
     if (Array.isArray(rawClips)) {
       const validClips = rawClips.filter((item): item is { sceneId: string; title: string; videoUrl: string; durationSec: number } => Boolean(item && typeof item === "object" && "videoUrl" in item && typeof item.videoUrl === "string"));
-      setGeneratedClips(validClips);
+      const savedClips = validClips.map((item) => ({ ...item, videoUrl: appHostedVideoUrl(item.videoUrl) }));\n      setGeneratedClips(savedClips);\n      savedClips.forEach((item) => updateScene(movieId, item.sceneId, { outputUrl: item.videoUrl, status: "completed" }));
     }
 
     if (result.script) {
@@ -336,7 +336,7 @@ export function ProducePage() {
         <p className="mb-2 font-semibold">Pipeline stages</p>
         <label className="flex items-center gap-2"><input type="checkbox" checked={doScript} onChange={(e) => setDoScript(e.target.checked)} /> Script</label>
         <label className="mt-1 flex items-center gap-2"><input type="checkbox" checked={doVoice} onChange={(e) => setDoVoice(e.target.checked)} /> Voice (Web Speech, free)</label>
-        <label className="mt-1 flex items-center gap-2"><input type="checkbox" checked={doVideo} onChange={(e) => setDoVideo(e.target.checked)} /> Generate AI video (LTX / Wan / ComfyUI)</label>
+        <label className="mt-1 flex items-center gap-2"><input type="checkbox" checked={doVideo} onChange={(e) => setDoVideo(e.target.checked)} /> Generate AI video (MiniMax-H3 / Wan / ComfyUI)</label>
       </section>
 
       <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-black">
