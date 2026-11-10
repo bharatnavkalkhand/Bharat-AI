@@ -1,7 +1,7 @@
 import type { AgentRunInput, AgentRunResult } from "./types";
 import { generateSilentClip } from "./hf-zerogpu-worker";
 import { createComfyUiWorker, getComfyUiUrl } from "./comfyui-worker";
-import { createPublicLtxWorker } from "./public-ltx-worker";
+import { createPublicMinimaxWorker } from "./public-minimax-worker";
 
 export interface StoryboardFrame {
   sceneId: string;
@@ -147,17 +147,15 @@ export async function runVideoAgent(
     };
   }
 
-  // Zero-setup default: a public LTX Video ZeroGPU demo. This is genuine
-  // diffusion inference, but it is a shared community service (not guaranteed).
-  // Anonymous visitor quota is limited, so the default path generates one short scene.
+  // Zero-setup default: public MiniMax-H3 ZeroGPU. This is a real video+audio
+  // diffusion pipeline; shared community GPU availability and daily quota vary.
   if (!normalizedWorkerUrl) {
     const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
     const scene = sortedScenes[0];
     const cast = input.characters
       .filter((character) => !scene.characterIds?.length || scene.characterIds.includes(character.id))
       .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
-      .filter(Boolean)
-      .join("; ");
+      .filter(Boolean).join("; ");
     const prompt = [
       scene.visualPrompt || scene.title,
       scene.mood ? "Mood: " + scene.mood : "",
@@ -165,21 +163,43 @@ export async function runVideoAgent(
       scene.dialogue || scene.narration ? "Scene context: " + (scene.dialogue || scene.narration) : "",
       "Photorealistic live-action cinematic footage, natural human movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, consistent character design, no cartoon, no illustration, no text, no subtitles.",
     ].filter(Boolean).join(". ");
-    const worker = createPublicLtxWorker();
+    const worker = createPublicMinimaxWorker();
     try {
-      const { remoteJobId } = await worker.submit({ movieId: input.movieId, sceneId: scene.id, prompt, aspectRatio: "16:9", width: 704, height: 512, durationSec: 2, seed: 42 + scene.order }, "bharat-public-ltx-" + input.movieId + "-" + scene.id + "-" + Date.now());
+      const { remoteJobId } = await worker.submit({
+        movieId: input.movieId, sceneId: scene.id, prompt, aspectRatio: "16:9",
+        width: 960, height: 544, durationSec: 5, seed: 42 + scene.order,
+      }, "bharat-minimax-h3-" + input.movieId + "-" + scene.id + "-" + Date.now());
       const generated = await worker.status(remoteJobId);
       if (generated.status === "succeeded") {
-        const clip = { sceneId: scene.id, title: scene.title, videoUrl: generated.videoUrl, durationSec: 2 };
-        return { agentId: "video", status: "succeeded", message: "Generated a real AI video clip through the shared public LTX ZeroGPU engine. Remaining scenes stay as storyboard scenes; free GPU availability is limited.", outputText: scene.title + ": " + generated.videoUrl, data: { board, mode: "public-ltx-zero-gpu", clips: [clip], clipUrl: clip.videoUrl, generatedSceneCount: 1, totalSceneCount: sortedScenes.length }, durationMs: performance.now() - t0 };
+        const clip = { sceneId: scene.id, title: scene.title, videoUrl: generated.videoUrl, durationSec: 5 };
+        return {
+          agentId: "video", status: "succeeded",
+          message: "Generated a real ~5-second AI video with synchronized soundtrack through the public MiniMax-H3 ZeroGPU engine. Shared free GPU capacity is limited.",
+          outputText: scene.title + ": " + generated.videoUrl,
+          data: { board, mode: "public-minimax-h3-zerogpu", clips: [clip], clipUrl: clip.videoUrl, generatedSceneCount: 1, totalSceneCount: sortedScenes.length },
+          durationMs: performance.now() - t0,
+        };
       }
       const reason = generated.status === "failed" ? generated.error : "job did not finish";
-      return { agentId: "video", status: "failed", message: "The public AI video engine did not return a clip: " + reason, outputText: "No video file was produced. The storyboard remains available.", data: { board, mode: "public-ltx-error", workerError: reason }, durationMs: performance.now() - t0 };
+      return {
+        agentId: "video", status: "failed",
+        message: "The public MiniMax-H3 video engine did not return a clip: " + reason,
+        outputText: "No video file was produced. The storyboard remains available.",
+        data: { board, mode: "public-minimax-h3-error", workerError: reason },
+        durationMs: performance.now() - t0,
+      };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Public AI video generation failed";
-      return { agentId: "video", status: "failed", message: "The free public AI video engine is unavailable right now: " + reason, outputText: "No video file was produced. The storyboard remains available.", data: { board, mode: "public-ltx-error", workerError: reason }, durationMs: performance.now() - t0 };
+      return {
+        agentId: "video", status: "failed",
+        message: "The free public MiniMax-H3 video engine is unavailable right now: " + reason,
+        outputText: "No video file was produced. The storyboard remains available.",
+        data: { board, mode: "public-minimax-h3-error", workerError: reason },
+        durationMs: performance.now() - t0,
+      };
     }
   }
+
   if (normalizedWorkerUrl && isHuggingFaceSpace) {
     // Generate a very small number of short silent clips. The worker reserves
     // 120s for 17 frames and 180s for 33 frames; a free personal ZeroGPU quota
