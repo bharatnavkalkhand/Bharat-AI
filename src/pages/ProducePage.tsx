@@ -19,6 +19,7 @@ import {
   getYtAgentDashboardUrl,
 } from "@/agents/youtube-publish-bridge";
 import { cn } from "@/lib/utils";
+import { VideoWorkflowStudio } from "@/components/VideoWorkflowStudio";
 
 function appHostedVideoUrl(url: string, download = false): string {
   const query = new URLSearchParams({ url });
@@ -342,6 +343,8 @@ export function ProducePage() {
           <p className="text-sm text-muted">{movie.title}</p>
         </div>
       </header>
+
+      <VideoWorkflowStudio />
 
       <div className="mb-5 flex gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3.5 text-xs text-muted">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
