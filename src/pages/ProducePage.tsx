@@ -153,7 +153,7 @@ export function ProducePage() {
     );
     setPipeline(result.pipeline);
     const url = result.video?.data?.clipUrl;
-    setClipUrl(typeof url === "string" ? url : "");
+    setClipUrl(typeof url === "string" ? appHostedVideoUrl(url) : "");
     const rawClips = result.video?.data?.clips;
     if (Array.isArray(rawClips)) {
       const validClips = rawClips.filter((item): item is { sceneId: string; title: string; videoUrl: string; durationSec: number } => Boolean(item && typeof item === "object" && "videoUrl" in item && typeof item.videoUrl === "string"));
