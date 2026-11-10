@@ -20,7 +20,13 @@ import {
 } from "@/agents/youtube-publish-bridge";
 import { cn } from "@/lib/utils";
 
-function appHostedVideoUrl(url: string, download = false): string {\n  const query = new URLSearchParams({ url });\n  if (download) query.set("download", "1");\n  return `/api/video-proxy?${query.toString()}`;\n}\n\nfunction StagePill({ status }: { status: AgentStageStatus }) {
+function appHostedVideoUrl(url: string, download = false): string {
+  const query = new URLSearchParams({ url });
+  if (download) query.set("download", "1");
+  return `/api/video-proxy?${query.toString()}`;
+}
+
+function StagePill({ status }: { status: AgentStageStatus }) {
   const colors: Record<AgentStageStatus, string> = {
     idle: "bg-border text-muted", queued: "bg-border text-muted",
     running: "bg-amber-500/20 text-amber-400", succeeded: "bg-emerald-500/20 text-emerald-400",
@@ -64,7 +70,13 @@ export function ProducePage() {
   const [facePerformance, setFacePerformance] = useState(true);
   const [use3dAvatar, setUse3dAvatar] = useState(false);
   const [motion, setMotion] = useState<MotionIntensity>("high");
-  const [headline, setHeadline] = useState("");\n\n  useEffect(() => {\n    if (!movie) return;\n    const saved = movie.scenes.filter((scene) => scene.outputUrl).map((scene) => ({ sceneId: scene.id, title: scene.title, videoUrl: scene.outputUrl!, durationSec: 5 }));\n    if (saved.length) { setGeneratedClips(saved); setClipUrl(saved[0].videoUrl); }\n  }, [movie?.id]);
+  const [headline, setHeadline] = useState("");
+
+  useEffect(() => {
+    if (!movie) return;
+    const saved = movie.scenes.filter((scene) => scene.outputUrl).map((scene) => ({ sceneId: scene.id, title: scene.title, videoUrl: scene.outputUrl!, durationSec: 5 }));
+    if (saved.length) { setGeneratedClips(saved); setClipUrl(saved[0].videoUrl); }
+  }, [movie?.id]);
 
   if (!movie) {
     return (
@@ -145,7 +157,9 @@ export function ProducePage() {
     const rawClips = result.video?.data?.clips;
     if (Array.isArray(rawClips)) {
       const validClips = rawClips.filter((item): item is { sceneId: string; title: string; videoUrl: string; durationSec: number } => Boolean(item && typeof item === "object" && "videoUrl" in item && typeof item.videoUrl === "string"));
-      const savedClips = validClips.map((item) => ({ ...item, videoUrl: appHostedVideoUrl(item.videoUrl) }));\n      setGeneratedClips(savedClips);\n      savedClips.forEach((item) => updateScene(movieId, item.sceneId, { outputUrl: item.videoUrl, status: "completed" }));
+      const savedClips = validClips.map((item) => ({ ...item, videoUrl: appHostedVideoUrl(item.videoUrl) }));
+      setGeneratedClips(savedClips);
+      savedClips.forEach((item) => updateScene(movieId, item.sceneId, { outputUrl: item.videoUrl, status: "completed" }));
     }
 
     if (result.script) {
@@ -287,16 +301,16 @@ export function ProducePage() {
           {generatedClips.map((clip) => (
             <div key={clip.sceneId} className="space-y-1">
               <p className="text-xs font-medium">{clip.title}</p>
-              <video src={clip.videoUrl} controls playsInline className="w-full rounded-lg" />
-              <a href={clip.videoUrl} target="_blank" rel="noreferrer" className="text-xs text-accent">Open generated clip</a>
+              <video src={clip.videoUrl} controls playsInline preload="metadata" className="w-full rounded-lg" />
+              <a href={appHostedVideoUrl(new URL(clip.videoUrl, window.location.origin).searchParams.get("url") || clip.videoUrl, true)} className="inline-flex rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black">Download MP4</a>
             </div>
           ))}
         </section>
       ) : clipUrl ? (
         <section className="card-pro mb-5 space-y-2 p-3">
           <h2 className="text-sm font-semibold">AI-generated video clip</h2>
-          <video src={clipUrl} controls playsInline className="w-full rounded-lg" />
-          <a href={clipUrl} target="_blank" rel="noreferrer" className="text-xs text-accent">Open generated clip</a>
+          <video src={clipUrl} controls playsInline preload="metadata" className="w-full rounded-lg" />
+          <a href={clipUrl} className="inline-flex rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black">Download MP4</a>
         </section>
       ) : null}
 
