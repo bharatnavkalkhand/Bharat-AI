@@ -155,15 +155,20 @@ export function ProducePage() {
     const url = result.video?.data?.clipUrl;
     setClipUrl(typeof url === "string" ? appHostedVideoUrl(url) : "");
     const rawClips = result.video?.data?.clips;
+    let clipsToPersist: Array<{ sceneId: string; title: string; videoUrl: string; durationSec: number }> = [];
     if (Array.isArray(rawClips)) {
       const validClips = rawClips.filter((item): item is { sceneId: string; title: string; videoUrl: string; durationSec: number } => Boolean(item && typeof item === "object" && "videoUrl" in item && typeof item.videoUrl === "string"));
-      const savedClips = validClips.map((item) => ({ ...item, videoUrl: appHostedVideoUrl(item.videoUrl) }));
-      setGeneratedClips(savedClips);
-      savedClips.forEach((item) => updateScene(movieId, item.sceneId, { outputUrl: item.videoUrl, status: "completed" }));
+      clipsToPersist = validClips.map((item) => ({ ...item, videoUrl: appHostedVideoUrl(item.videoUrl) }));
+      setGeneratedClips(clipsToPersist);
     }
 
     if (result.script) {
       applyScriptResult(movieId, result.script, { replaceCast: true, replaceScenes: true });
+      const currentScenes = useMovieStore.getState().movies.find((m) => m.id === movieId)?.scenes.slice().sort((a, b) => a.order - b.order) || [];
+      clipsToPersist.forEach((item, index) => {
+        const target = currentScenes.find((scene) => scene.title === item.title) || currentScenes[index];
+        if (target) updateScene(movieId, target.id, { outputUrl: item.videoUrl, status: "completed" });
+      });
       if (!headline) setHeadline(result.script.logline?.slice(0, 80) || movie.title);
       try {
         const after = useMovieStore.getState().movies.find((m) => m.id === movieId);
