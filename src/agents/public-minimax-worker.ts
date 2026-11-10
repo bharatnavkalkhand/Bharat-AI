@@ -34,7 +34,7 @@ function parseSse(text: string, base: string): RemoteJobStatus {
     const payload = line.slice(5).trim();
     if (event === "error") {
       let detail = payload;
-      try { detail = String(JSON.parse(payload) ?? ""); } catch { /* keep raw */ }
+      try { const parsed = JSON.parse(payload) as unknown; if (parsed && typeof parsed === "object") { const record = parsed as Record<string, unknown>; detail = String(record.message || record.error || record.detail || JSON.stringify(parsed)); } else detail = String(parsed ?? ""); } catch { /* keep raw */ }
       return { status: "failed", error: detail && detail !== "null" ? detail : "MiniMax-H3 ZeroGPU returned an empty error event; no MP4 was produced.", retryable: true };
     }
     if (!payload || payload === "null") continue;
