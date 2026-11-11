@@ -81,3 +81,29 @@ Do not target full ComfyUI, SD.Next, InvokeAI, Diffusers CUDA pipelines, or Echo
 - No secrets are embedded in the Vite client bundle.
 - Model weights and datasets are checked for redistribution and commercial-use terms before packaging.
 - Face replacement or voice imitation requires authorization from the person represented.
+
+## GPU host selection — first validation
+
+**Selected first test host: Kaggle Notebooks (free GPU accelerator when available).**
+
+Why this is the first candidate:
+- Kaggle documents free notebook GPU access, including NVIDIA P100 and, depending on availability, T4 x2; GPU sessions are queued when capacity is busy.
+- The notebook runtime is suitable for a controlled batch-generation smoke test and downloading the resulting artifact.
+- It is **not** a persistent public inference server. Bharat AI on Vercel cannot depend on a Kaggle notebook remaining online or expose it as a production worker.
+
+Official limits and caveats:
+- Kaggle documents a weekly GPU quota (commonly 30 hours, subject to change) and session limits; availability can be queued.
+- Google Colab free resources are not guaranteed. Its current FAQ explicitly disallows using free managed runtimes primarily as a web UI or distributed worker.
+- Hugging Face ZeroGPU is shared and quota-limited. Its current documentation lists 5 minutes/day for free authenticated users and 2 minutes/day unauthenticated; hosting your own free ZeroGPU Space requires an account in good standing older than 30 days.
+
+**Integration decision:** use Kaggle first for a one-shot GPU + real MP4 acceptance test. Do not register it as a live Bharat AI worker. Only after a playable MP4 is produced should we decide whether a compliant persistent worker is possible without payment. A browser login and GPU-session start must be performed by the account holder; no account credentials are stored in this repository.
+
+### First GPU acceptance test
+
+1. Open a Kaggle Notebook while signed in.
+2. Set Notebook Settings → Accelerator → GPU (choose an available option).
+3. Run `nvidia-smi` and record the actual GPU model and VRAM.
+4. Run a CUDA/PyTorch availability check.
+5. Run one short, low-resolution video-generation job only if the selected model fits the detected VRAM.
+6. Verify the output file exists, is non-empty, reports MP4 MIME/container, and plays; then download it.
+7. Record model, GPU, generation time, resolution, duration, and any quota/error. Do not mark the Bharat AI video adapter as connected based on GPU detection alone.
