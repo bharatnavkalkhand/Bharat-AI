@@ -399,7 +399,9 @@ export function HomePage() {
   const [activeSound, setActiveSound] = useState<number | null>(null);
   const tx = TXT[lang];
 
-  const goCreate = useCallback(() => navigate("/produce"), [navigate]);
+  const goCreate = useCallback((templateIndex?: number) => {
+    navigate(templateIndex === undefined ? "/create" : `/create?template=${templateIndex}`);
+  }, [navigate]);
 
   const STEPS = [
     { num: "01", icon: "✍️", key: "step1" as const },
@@ -580,7 +582,7 @@ export function HomePage() {
               <SectionLabel title={tx.tplHeading} />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
                 {BHARAT_TEMPLATES.map((tpl, i) => (
-                  <div key={tpl.id} className="bharat-card" style={{ background: "rgba(14,14,22,.92)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 20, overflow: "hidden", cursor: "pointer" }} onClick={goCreate}>
+                  <div key={tpl.id} className="bharat-card" style={{ background: "rgba(14,14,22,.92)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 20, overflow: "hidden", cursor: "pointer" }} onClick={() => goCreate(i)}>
                     <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden" }}>
                       <TemplateCanvas idx={i} title={lang === "hi" ? tpl.titleHi : tpl.titleEn} />
                       <div style={{ position: "absolute", top: 8, left: 8, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 999, background: GENRE_COLORS[tpl.genres[0]] ?? "rgba(100,100,100,.75)", color: "white", backdropFilter: "blur(6px)" }}>
@@ -594,7 +596,7 @@ export function HomePage() {
                         {lang === "hi" ? tpl.ideaHi : tpl.ideaEn}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-                        <button onClick={(e) => { e.stopPropagation(); goCreate(); }} style={{ fontSize: 12, fontWeight: 700, color: "#e8a022", background: "rgba(232,160,34,.12)", border: "none", padding: "5px 12px", borderRadius: 999, cursor: "pointer" }}>
+                        <button onClick={(e) => { e.stopPropagation(); goCreate(i); }} style={{ fontSize: 12, fontWeight: 700, color: "#e8a022", background: "rgba(232,160,34,.12)", border: "none", padding: "5px 12px", borderRadius: 999, cursor: "pointer" }}>
                           {tx.useTemplate}
                         </button>
                         <span style={{ fontSize: 11, color: "#5a5660" }}>~2 min</span>
