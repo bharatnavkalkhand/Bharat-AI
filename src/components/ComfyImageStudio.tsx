@@ -44,7 +44,7 @@ export function ComfyImageStudio() {
 
   async function checkWorker() {
     setBusy(true);
-    if (workerUrl.trim()) localStorage.setItem("bharat_comfyui_url", workerUrl.trim().replace(/\/$/, ""));
+    if (workerUrl.trim()) { const value = workerUrl.trim(); localStorage.setItem("bharat_comfyui_url", value.endsWith("/") ? value.slice(0, -1) : value); }
     const result = await checkComfyImageWorker();
     setWorkerReady(result.available);
     setMessage(result.reason);
