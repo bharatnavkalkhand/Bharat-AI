@@ -115,7 +115,6 @@ export function DirectorControls({
     );
   }
 
-  /** Free text → image for all scenes (Pollinations, no key). */
   async function runTextToImage() {
     if (!movie.scenes.length) {
       onStatus?.(
@@ -127,15 +126,14 @@ export function DirectorControls({
     }
     setImgBusy(true);
     onStatus?.(
-      movie.language === "hi"
-        ? "Text → image… (free)"
-        : "Text → image… (free)",
+      movie.language === "hi" ? "Text → image… (free)" : "Text → image… (free)",
     );
     try {
       const prompts = scenePromptsFromMovie(movie);
       const fills: SceneImageFill[] = [];
       for (let i = 0; i < prompts.length; i++) {
         const p = prompts[i]!;
+        const scene = movie.scenes.find((s) => s.id === p.sceneId);
         onStatus?.(
           movie.language === "hi"
             ? `Image ${i + 1}/${prompts.length}…`
@@ -149,9 +147,13 @@ export function DirectorControls({
         const src = result.dataUrl || result.imageUrl;
         fills.push({
           sceneId: p.sceneId,
+          title: scene?.title || p.sceneId,
+          mood: scene?.mood || "dramatic",
+          queries: [p.prompt],
+          candidates: [{ url: result.imageUrl, source: "mixed", title: p.prompt }],
           imageTop: src,
-          source: "worker",
-        } as SceneImageFill);
+          source: "mixed",
+        });
         if (onPickImage) onPickImage(p.sceneId, "top", src);
       }
       if (onApplyImages && fills.length) onApplyImages(fills);
@@ -236,8 +238,8 @@ export function DirectorControls({
     if (!url) {
       onStatus?.(
         movie.language === "hi"
-          ? "ComfyUI URL chahiye — ya neeche public AI video use karo"
-          : "Need ComfyUI URL — or use public AI video below",
+          ? "ComfyUI URL chahiye — ya Run production pipeline se video"
+          : "Need ComfyUI URL — or Run production pipeline for video",
       );
       return;
     }
@@ -292,11 +294,8 @@ export function DirectorControls({
 
   return (
     <section className="mb-4 space-y-2 rounded-xl border border-border bg-card p-3">
-      <p className="text-xs font-semibold">
-        {movie.language === "hi" ? "AI Image + Video Generator" : "AI Image + Video Generator"}
-      </p>
+      <p className="text-xs font-semibold">AI Image + Video Generator</p>
 
-      {/* Primary: free text-to-image */}
       <button
         type="button"
         disabled={disabled}
@@ -314,8 +313,8 @@ export function DirectorControls({
 
       <p className="text-[10px] text-muted leading-relaxed">
         {movie.language === "hi"
-          ? "Scene prompts se stills banati hai (Pollinations · no API key). Phir Play / Export ya video worker."
-          : "Builds stills from scene prompts (Pollinations · no API key). Then Play / Export or video worker."}
+          ? "Scene prompts se stills (Pollinations · no key). Phir Play / Export ya video."
+          : "Stills from scene prompts (Pollinations · no key). Then Play / Export or video."}
       </p>
 
       <label className="mt-2 flex items-center gap-2 text-xs font-medium">
@@ -346,9 +345,7 @@ export function DirectorControls({
       </label>
 
       <div className="mt-3 space-y-1">
-        <p className="text-[10px] font-medium text-muted">
-          Video · optional HF worker override
-        </p>
+        <p className="text-[10px] font-medium text-muted">Video · optional HF worker</p>
         <input
           value={workerUrl}
           onChange={(e) => onWorkerUrlChange?.(e.target.value)}
@@ -381,9 +378,7 @@ export function DirectorControls({
       </div>
 
       <div className="mt-3 space-y-1">
-        <p className="text-[10px] font-medium text-muted">
-          C · Local ComfyUI / bridge (strong video)
-        </p>
+        <p className="text-[10px] font-medium text-muted">C · Local ComfyUI (strong video)</p>
         <input
           value={comfyUrl}
           onChange={(e) => {
@@ -404,9 +399,8 @@ export function DirectorControls({
       </div>
 
       <p className="mt-2 text-[10px] leading-relaxed text-muted">
-        <strong className="text-fg">Generator flow:</strong> Text→Image (free) →
-        Play/Export client video · ya HF/Comfy se AI video · lips alag Space se.
-        Public GPU quota limited rehti hai.
+        <strong className="text-fg">Flow:</strong> Text→Image → Play/Export ·
+        optional HF / Comfy video · optional lips. Public GPU limited.
       </p>
     </section>
   );
