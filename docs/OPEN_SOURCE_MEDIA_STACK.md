@@ -36,8 +36,8 @@ A worker adapter should expose: `GET /health`, `GET /capabilities`, `POST /jobs`
 | [Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | Automated short-video orchestration, script/image/video/TTS assembly | Workflow reference / optional separate worker. Verify the exact upstream repository, release and license before importing; do not assume all model endpoints are free. |
 | [HyperFrames](https://github.com/heygen-com/hyperframes) | Timeline-driven composition and rendering from generated assets | Rendering/composition layer, not the core diffusion video model. Apache-2.0 is stated by its project. |
 | [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo) | Short-video automation patterns: script, footage, narration, subtitles | Reuse ideas and compatible modules only after code/license review; avoid relying on paid APIs in its optional integrations. |
-| [OpenMontage](https://github.com/) | Agentic production orchestration patterns | Candidate for workflow comparison, not a runtime dependency until exact repository, license, security and maintenance are checked. |
-| [ViMax](https://github.com/) | Multi-agent storyboarding, character design and temporal consistency patterns | Candidate for orchestration patterns; confirm canonical upstream repository and license before adoption. |
+| OpenMontage (canonical upstream URL not yet verified) | Agentic production orchestration patterns | Candidate for workflow comparison, not a runtime dependency until exact repository, license, security and maintenance are checked. |
+| ViMax (canonical upstream URL not yet verified) | Multi-agent storyboarding, character design and temporal consistency patterns | Candidate for orchestration patterns; confirm canonical upstream repository and license before adoption. |
 
 **Model routing:** use LTX-2 for supported short shots and image/audio-conditioned scenes; evaluate Helios for longer continuous sequences; use Pixelle-style orchestration to plan and assemble multiple shots. The model adapter must advertise its actual max duration, resolution, aspect ratios, conditioning modes, and hardware requirements. Bharat AI should split long films into scene/shot jobs and assemble them; do not request a 5–30 minute single diffusion render by default.
 
@@ -46,14 +46,14 @@ A worker adapter should expose: `GET /health`, `GET /capabilities`, `POST /jobs`
 | Project | Intended Bharat AI role | Integration decision |
 | --- | --- | --- |
 | [WhisperLive](https://github.com/collabora/WhisperLive) | Live/streaming speech recognition, transcripts and subtitle timing | Optional speech input/transcription worker. |
-| [ACE-Step](https://github.com/ace-step/ACE-Step) | Local music generation | Background score worker, subject to model/runtime requirements. |
-| [Magenta](https://github.com/magenta/magenta) | Music research/tooling | Research candidate; confirm the exact “Magenta RealTime 2” repository and current supported runtime before selecting it. |
+| [ACE-Step](https://github.com/ace-step/ACE-Step-1.5) | Local music generation | Background score worker, subject to model/runtime requirements. |
+| [Magenta](https://github.com/magenta/magenta-realtime) | Music research/tooling | Use the [Magenta RealTime 2 repository](https://github.com/magenta/magenta-realtime); open weights with JAX/MLX/C++ inference, but validate platform and model terms. |
 | [Amphion](https://github.com/open-mmlab/Amphion) | Speech, singing and audio research toolkit | Optional advanced audio worker; broad toolkit, not a one-click TTS endpoint. |
 | [Stable Audio Tools](https://github.com/Stability-AI/stable-audio-tools) | Sound effects and music generation | Optional local sound-design worker; check model-weight terms separately from code license. |
 | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Reference-voice cloning and multilingual speech | Optional consent-based character voice worker. Require explicit speaker permission and store voice references securely. |
-| [Supertonic](https://github.com/supertone-inc/supertonic) | Fast on-device/local text-to-speech | Preferred lightweight TTS candidate for initial integration if Hindi/English voices and target runtime are supported. |
-| [Voicebox](https://github.com/) | Local voice studio patterns | Exact upstream repo and license need confirmation before adoption. |
-| [Voice-Pro](https://github.com/) | Speech recognition/TTS/voice UI patterns | Exact upstream repo and license need confirmation before adoption. |
+| [Supertonic](https://github.com/supertone-oss-archive/supertonic) | Fast on-device/local text-to-speech | Archived in 2026; no further upstream support. Treat only as a pinned legacy candidate, not the preferred new dependency; verify Hindi/English support and model terms. |
+| [Voicebox](https://github.com/AltusDD/voicebox) | Local voice studio patterns | Exact upstream repo and license need confirmation before adoption. |
+| Voice-Pro (canonical upstream URL not yet verified) | Speech recognition/TTS/voice UI patterns | Exact upstream repo and license need confirmation before adoption. |
 
 Audio pipeline: script/dialogue → TTS per character or narrator → optional music/SFX → speech alignment → subtitles → final mux. Voice cloning is opt-in and must not be used to imitate a real person without permission.
 
@@ -65,7 +65,7 @@ Audio pipeline: script/dialogue → TTS per character or narrator → optional m
 | [gsplat](https://github.com/nerfstudio-project/gsplat) | Gaussian-splat training/rendering primitives | Advanced scene reconstruction pipeline. |
 | [LichtFeld-Studio](https://github.com/MrNeRF/LichtFeld-Studio) | Desktop Gaussian-splat editing/training | Creator-side tool, not a hosted web dependency. |
 | [OpenSplat](https://github.com/pierotofy/OpenSplat) | Portable Gaussian-splat reconstruction | Optional reconstruction worker; review AGPL obligations before network deployment or distribution. |
-| [Modly](https://github.com/) | Image-to-3D desktop workflow | Exact canonical repository and license need confirmation before adoption. |
+| [Modly](https://github.com/lightningpixel/modly) | Image-to-3D desktop workflow | Exact canonical repository and license need confirmation before adoption. |
 
 ## License and security gate
 
