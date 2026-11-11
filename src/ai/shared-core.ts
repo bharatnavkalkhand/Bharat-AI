@@ -26,7 +26,8 @@ export interface AiExecutionAdapter {
 }
 export interface StorageLike { getItem(key: string): string | null; setItem(key: string, value: string): void }
 export class AiCoreError extends Error {
-  constructor(message: string, readonly code: string) { super(message); this.name = "AiCoreError"; }
+  readonly code: string;
+  constructor(message: string, code: string) { super(message); this.name = "AiCoreError"; this.code = code; }
 }
 const KEY = "bharat-ai.shared-ai-core";
 const EMPTY: SharedAiState = { version: 2, tools: [], connections: [], models: [], suiteBindings: {}, appBindings: {}, jobs: [] };
