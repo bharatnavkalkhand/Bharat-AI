@@ -24,5 +24,7 @@ jobs:
         run: npm run typecheck
       - name: Production build
         run: npm run build
+      - name: Shared AI core contract tests
+        run: node --experimental-strip-types --test tests/ai-shared-core.test.mjs
       - name: Validate ZeroGPU worker Python syntax
         run: python -m py_compile workers/hf-zerogpu/app.py
