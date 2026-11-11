@@ -1,7 +1,7 @@
 import type { AgentRunInput, AgentRunResult } from "./types";
 import { generateSilentClip } from "./hf-zerogpu-worker";
 import { createComfyUiWorker, getComfyUiUrl } from "./comfyui-worker";
-import { createPublicMinimaxWorker } from "./public-minimax-worker";
+import { createPublicLtxWorker } from "./public-ltx-worker";
 
 export interface StoryboardFrame {
   sceneId: string;
@@ -147,93 +147,80 @@ export async function runVideoAgent(
     };
   }
 
-  // Zero-setup default: generate up to four consecutive 5-second shots.
-  // This gives the editor a practical ~20-second sequence while keeping each
-  // returned MP4 independently previewable/retryable. Shared free GPU capacity
-  // is limited, so stop at the first failed shot and preserve completed clips.
+  // Zero-setup default: use the public community LTX-Video ZeroGPU demo.
+  // This is LTX-Video (not the much larger official LTX-2 model). It is a
+  // shared, best-effort demo and currently returns short silent clips only.
+  // Limit each run to one shot so we do not overstate anonymous GPU capacity.
   if (!normalizedWorkerUrl) {
     const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
-    const scenesToGenerate = sortedScenes.slice(0, 4);
-    const worker = createPublicMinimaxWorker();
-    const clips: Array<{ sceneId: string; title: string; videoUrl: string; durationSec: number }> = [];
-    let firstError: string | null = null;
+    const scene = sortedScenes[0];
+    const worker = createPublicLtxWorker();
+    const cast = input.characters
+      .filter((character) => !scene.characterIds?.length || scene.characterIds.includes(character.id))
+      .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
+      .filter(Boolean).join("; ");
+    const prompt = [
+      scene.visualPrompt || scene.title,
+      scene.mood ? "Mood: " + scene.mood : "",
+      cast ? "Maintain these character identities and appearances: " + cast : "",
+      scene.dialogue || scene.narration ? "Scene context: " + (scene.dialogue || scene.narration) : "",
+      "Photorealistic live-action cinematic footage, natural human movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, consistent character design, no cartoon, no illustration, no text, no subtitles.",
+    ].filter(Boolean).join(". ");
 
-    for (const scene of scenesToGenerate) {
-      const cast = input.characters
-        .filter((character) => !scene.characterIds?.length || scene.characterIds.includes(character.id))
-        .map((character) => [character.name, character.role, character.appearance].filter(Boolean).join(", "))
-        .filter(Boolean).join("; ");
-      const prompt = [
-        scene.visualPrompt || scene.title,
-        scene.mood ? "Mood: " + scene.mood : "",
-        cast ? "Maintain these character identities and appearances: " + cast : "",
-        scene.dialogue || scene.narration ? "Scene context: " + (scene.dialogue || scene.narration) : "",
-        "Photorealistic live-action cinematic footage, natural human movement, believable physics, expressive faces, detailed environment, smooth camera movement, cinematic lighting, consistent character design, no cartoon, no illustration, no text, no subtitles.",
-      ].filter(Boolean).join(". ");
+    try {
+      const quota = await worker.quota();
+      if (!quota.available) throw new Error(quota.reason || "Public LTX worker is unavailable.");
+      const { remoteJobId } = await worker.submit({
+        movieId: input.movieId,
+        sceneId: scene.id,
+        prompt,
+        aspectRatio: "16:9",
+        width: 832,
+        height: 480,
+        durationSec: 4,
+        seed: 42 + scene.order,
+      }, "bharat-ltx-video-" + input.movieId + "-" + scene.id + "-" + Date.now());
 
-      try {
-        const { remoteJobId } = await worker.submit({
-          movieId: input.movieId,
-          sceneId: scene.id,
-          prompt,
-          aspectRatio: "16:9",
-          width: 960,
-          height: 544,
-          durationSec: 5,
-          seed: 42 + scene.order,
-        }, "bharat-minimax-h3-" + input.movieId + "-" + scene.id + "-" + Date.now());
-        const generated = await worker.status(remoteJobId);
-        if (generated.status !== "succeeded") {
-          firstError = generated.status === "failed" ? generated.error : "The generation job did not finish.";
-          break;
-        }
-        clips.push({
-          sceneId: scene.id,
-          title: scene.title,
-          videoUrl: generated.videoUrl,
-          durationSec: 5,
-        });
-      } catch (error) {
-        firstError = error instanceof Error ? error.message : "Public AI video generation failed";
-        break;
+      // Gradio's call endpoint streams the complete queued result; this may
+      // take up to three minutes on the shared ZeroGPU Space.
+      const generated = await worker.status(remoteJobId);
+      if (generated.status !== "succeeded") {
+        throw new Error(generated.status === "failed" ? generated.error : "The LTX job did not return a completed MP4.");
       }
-    }
 
-    if (clips.length) {
-      const totalDurationSec = clips.reduce((total, clip) => total + clip.durationSec, 0);
-      const remaining = sortedScenes.length - clips.length;
-      const partialNote = firstError
-        ? " Generation stopped after a failed shot: " + firstError
-        : remaining > 0
-          ? " Only the first four scenes are generated per run."
-          : "";
+      const clip = {
+        sceneId: scene.id,
+        title: scene.title,
+        videoUrl: generated.videoUrl,
+        durationSec: 4,
+      };
       return {
         agentId: "video",
-        status: firstError ? "failed" : "succeeded",
-        message: "Generated " + clips.length + " real AI shot(s), approximately " + totalDurationSec + " seconds total. Each MP4 is returned separately for preview and download." + partialNote,
-        outputText: clips.map((clip) => clip.title + ": " + clip.videoUrl).join("\n"),
+        status: "succeeded",
+        message: "Generated one real 4-second silent AI video clip with the shared LTX-Video ZeroGPU demo. The remaining scenes stay in the storyboard; shared GPU availability is not guaranteed.",
+        outputText: scene.title + ": " + generated.videoUrl,
         data: {
           board,
-          mode: "public-minimax-h3-zerogpu",
-          clips,
-          clipUrl: clips[0].videoUrl,
-          generatedSceneCount: clips.length,
+          mode: "public-ltx-video-zerogpu",
+          clips: [clip],
+          clipUrl: generated.videoUrl,
+          generatedSceneCount: 1,
           totalSceneCount: sortedScenes.length,
-          totalDurationSec,
-          partialError: firstError,
+          totalDurationSec: 4,
         },
         durationMs: performance.now() - t0,
       };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Public LTX generation failed.";
+      return {
+        agentId: "video",
+        status: "failed",
+        message: "The public LTX-Video worker did not produce an MP4: " + detail + " No fake preview or download was created.",
+        outputText: "No video file was produced. The storyboard remains available.",
+        data: { board, mode: "public-ltx-video-error", workerError: detail },
+        durationMs: performance.now() - t0,
+      };
     }
-
-    return {
-      agentId: "video",
-      status: "failed",
-      message: "The free public MiniMax-H3 engine did not return a video: " + (firstError || "No MP4 was produced."),
-      outputText: "No video file was produced. The storyboard remains available.",
-      data: { board, mode: "public-minimax-h3-error", workerError: firstError },
-      durationMs: performance.now() - t0,
-    };
   }
 
   if (normalizedWorkerUrl && isHuggingFaceSpace) {
