@@ -15,6 +15,7 @@ export function ComfyImageStudio() {
     return saved ? JSON.stringify(saved.workflow, null, 2) : "";
   });
   const [promptNodeId, setPromptNodeId] = useState(() => loadComfyImageWorkflow()?.promptNodeId || "");
+  const [workerUrl, setWorkerUrl] = useState(() => (typeof localStorage !== "undefined" ? localStorage.getItem("bharat_comfyui_url") || "" : ""));
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("low quality, blurry, distorted, watermark, text");
   const [message, setMessage] = useState("Import a ComfyUI API-format workflow to enable image generation.");
@@ -32,8 +33,17 @@ export function ComfyImageStudio() {
     }
   }
 
+  function saveWorkerUrl() {
+    const value = workerUrl.trim().replace(/\/$/, "");
+    if (!value) { setMessage("Enter your ComfyUI worker URL first."); return; }
+    localStorage.setItem("bharat_comfyui_url", value);
+    setWorkerReady(null);
+    setMessage("Worker URL saved on this device. Now check the connection.");
+  }
+
   async function checkWorker() {
     setBusy(true);
+    if (workerUrl.trim()) localStorage.setItem("bharat_comfyui_url", workerUrl.trim().replace(/\/$/, ""));
     const result = await checkComfyImageWorker();
     setWorkerReady(result.available);
     setMessage(result.reason);
@@ -41,6 +51,7 @@ export function ComfyImageStudio() {
   }
 
   async function generate() {
+    if (workerUrl.trim()) localStorage.setItem("bharat_comfyui_url", workerUrl.trim().replace(/\/$/, ""));
     if (!prompt.trim()) { setMessage("Enter a scene prompt first."); return; }
     setBusy(true);
     setImages([]);
@@ -82,7 +93,12 @@ export function ComfyImageStudio() {
           {workerReady === true ? "Worker online" : workerReady === false ? "Worker offline" : "Not checked"}
         </span>
       </div>
+      <label className="block space-y-1 text-xs">
+        <span>ComfyUI worker URL (must be reachable from this phone/browser)</span>
+        <input value={workerUrl} onChange={(e) => setWorkerUrl(e.target.value)} placeholder="https://your-comfyui-worker.example.com" className="w-full rounded-lg border border-border bg-bg px-3 py-2" />
+      </label>
       <div className="flex gap-2">
+        <button type="button" onClick={saveWorkerUrl} disabled={busy} className="rounded-lg border border-border px-3 py-2 text-xs">Save worker URL</button>
         <button type="button" onClick={() => void checkWorker()} disabled={busy} className="rounded-lg border border-border px-3 py-2 text-xs">Check worker</button>
         <button type="button" onClick={saveWorkflow} disabled={busy} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs"><Save className="h-3 w-3" /> Save workflow</button>
       </div>
