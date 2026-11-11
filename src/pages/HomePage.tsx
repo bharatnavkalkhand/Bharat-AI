@@ -499,7 +499,7 @@ export function HomePage() {
                 ))}
               </div>
               <span style={{ background: "rgba(232,160,34,.12)", color: "#e8a022", border: "1px solid rgba(232,160,34,.18)", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 999 }}>₹0</span>
-              <button className="bharat-btn-primary" onClick={goCreate} style={{ background: "#e8a022", color: "#0a0600", fontWeight: 700, fontSize: 13, padding: "8px 18px", borderRadius: 999, border: "none", cursor: "pointer" }}>
+              <button className="bharat-btn-primary" onClick={() => goCreate()} style={{ background: "#e8a022", color: "#0a0600", fontWeight: 700, fontSize: 13, padding: "8px 18px", borderRadius: 999, border: "none", cursor: "pointer" }}>
                 + {lang === "hi" ? "बनाएं" : "Create"}
               </button>
             </div>
@@ -518,7 +518,7 @@ export function HomePage() {
               </h1>
               <p style={{ marginTop: 14, fontSize: 15, color: "#a09898", lineHeight: 1.65, maxWidth: "42ch" }}>{tx.heroDesc}</p>
               <div style={{ marginTop: 24, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="bharat-btn-primary" onClick={goCreate} style={{ background: "linear-gradient(135deg,#e8a022,#f97316)", color: "white", fontWeight: 700, fontSize: 14, padding: "13px 24px", borderRadius: 12, border: "none", cursor: "pointer", boxShadow: "0 8px 28px rgba(232,160,34,.28)" }}>
+                <button className="bharat-btn-primary" onClick={() => goCreate()} style={{ background: "linear-gradient(135deg,#e8a022,#f97316)", color: "white", fontWeight: 700, fontSize: 14, padding: "13px 24px", borderRadius: 12, border: "none", cursor: "pointer", boxShadow: "0 8px 28px rgba(232,160,34,.28)" }}>
                   ＋ {tx.ctaNew}
                 </button>
                 <button className="bharat-btn-secondary" onClick={() => setTab("templates")} style={{ background: "#0e0e16", color: "#f0ede8", fontWeight: 600, fontSize: 14, padding: "13px 20px", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", cursor: "pointer" }}>
@@ -543,7 +543,7 @@ export function HomePage() {
                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 24, zIndex: 3, display: "flex", alignItems: "center", background: "rgba(0,0,0,.6)" }}><Sprockets /></div>
                 <div style={{ position: "absolute", top: 30, left: 10, zIndex: 4, background: "rgba(0,0,0,.65)", color: "#e8a022", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, letterSpacing: ".08em" }}>SCENE 01 · TAKE 1</div>
                 <div style={{ position: "absolute", bottom: 32, right: 10, zIndex: 4, background: "#e8a022", color: "#0a0600", fontSize: 10, fontWeight: 800, padding: "4px 10px", borderRadius: 999 }}>AI GENERATED</div>
-                <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={goCreate}>
+                <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => goCreate()}>
                   <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(232,160,34,.18)", border: "2px solid #e8a022", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
                     <svg width={24} height={24} viewBox="0 0 24 24" fill="#e8a022"><polygon points="5,3 19,12 5,21" /></svg>
                   </div>
@@ -672,7 +672,7 @@ export function HomePage() {
                       </div>
                     </div>
                     <Waveform active={activeSound === i} />
-                    <button onClick={goCreate} style={{ fontSize: 12, fontWeight: 700, color: v.accent, background: v.accent + "1a", border: "none", padding: "7px 14px", borderRadius: 999, cursor: "pointer", alignSelf: "flex-start" }}>
+                    <button onClick={() => goCreate()} style={{ fontSize: 12, fontWeight: 700, color: v.accent, background: v.accent + "1a", border: "none", padding: "7px 14px", borderRadius: 999, cursor: "pointer", alignSelf: "flex-start" }}>
                       ▶ {tx.preview}
                     </button>
                   </div>
@@ -686,7 +686,7 @@ export function HomePage() {
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <SectionLabel title={tx.projHeading} />
-                <button onClick={goCreate} style={{ fontSize: 12, fontWeight: 700, color: "#e8a022", background: "rgba(232,160,34,.12)", border: "1px solid rgba(232,160,34,.18)", padding: "6px 14px", borderRadius: 999, cursor: "pointer" }}>
+                <button onClick={() => goCreate()} style={{ fontSize: 12, fontWeight: 700, color: "#e8a022", background: "rgba(232,160,34,.12)", border: "1px solid rgba(232,160,34,.18)", padding: "6px 14px", borderRadius: 999, cursor: "pointer" }}>
                   {tx.newProject}
                 </button>
               </div>
@@ -695,7 +695,7 @@ export function HomePage() {
                   <div style={{ fontSize: "2.5rem", marginBottom: 14 }}>🎬</div>
                   <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f0ede8" }}>{tx.projEmpty}</h3>
                   <p style={{ fontSize: 13, color: "#a09898", marginTop: 6, maxWidth: "36ch", marginInline: "auto" }}>{tx.projEmptySub}</p>
-                  <button onClick={goCreate} style={{ marginTop: 20, background: "linear-gradient(135deg,#e8a022,#f97316)", color: "white", fontWeight: 700, fontSize: 14, padding: "12px 24px", borderRadius: 12, border: "none", cursor: "pointer" }}>
+                  <button onClick={() => goCreate()} style={{ marginTop: 20, background: "linear-gradient(135deg,#e8a022,#f97316)", color: "white", fontWeight: 700, fontSize: 14, padding: "12px 24px", borderRadius: 12, border: "none", cursor: "pointer" }}>
                     + {tx.ctaNew}
                   </button>
                 </div>
