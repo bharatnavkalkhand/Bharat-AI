@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { useMovieStore } from "@/store/movie-store";
 import type { Language, MovieDuration } from "@/lib/types";
@@ -17,6 +17,7 @@ const STYLE_OPTIONS = [
 
 export function CreateMoviePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const createMovie = useMovieStore((s) => s.createMovie);
   const applyScriptResult = useMovieStore((s) => s.applyScriptResult);
   const [ui, setUi] = useState<Language>("hi");
@@ -26,6 +27,13 @@ export function CreateMoviePage() {
   const [styles, setStyles] = useState<string[]>(["romance", "drama"]);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"create" | "oneclick">("create");
+
+  useEffect(() => {
+    const value = searchParams.get("template");
+    if (value === null) return;
+    const index = Number(value);
+    if (Number.isInteger(index) && index >= 0 && index < BHARAT_TEMPLATES.length) applyTemplate(index);
+  }, [searchParams]);
 
   function toggleStyle(id: string) {
     setStyles((prev) =>
