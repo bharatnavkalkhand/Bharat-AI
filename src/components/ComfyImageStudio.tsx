@@ -52,7 +52,7 @@ export function ComfyImageStudio() {
   }
 
   async function generate() {
-    if (workerUrl.trim()) localStorage.setItem("bharat_comfyui_url", workerUrl.trim().replace(/\\/$/, ""));
+    { const value = workerUrl.trim(); localStorage.setItem("bharat_comfyui_url", value.endsWith("/") ? value.slice(0, -1) : value); }
     if (!prompt.trim()) { setMessage("Enter a scene prompt first."); return; }
     setBusy(true);
     setImages([]);
