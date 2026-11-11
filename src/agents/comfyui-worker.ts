@@ -80,15 +80,33 @@ export function createComfyUiWorker(
           reason: "No ComfyUI URL (set bharat_comfyui_url)",
         };
       }
-      // Prefer bridge /quota; else assume local is available
+      // Prefer an explicit bridge quota response. Never infer availability
+      // from a configured URL: an offline worker must be reported unavailable.
       try {
         const res = await fetch(`${base}/quota`, {
           signal: AbortSignal.timeout(2500),
         });
-        if (res.ok) return (await res.json()) as WorkerQuota;
+        if (res.ok) {
+          const data = (await res.json()) as Partial<WorkerQuota>;
+          if (typeof data.available === "boolean") {
+            return {
+              available: data.available,
+              remainingUnits:
+                typeof data.remainingUnits === "number" && Number.isFinite(data.remainingUnits)
+                  ? data.remainingUnits
+                  : null,
+              unit: typeof data.unit === "string" ? data.unit : "gpu-seconds",
+              resetsAt: data.resetsAt,
+              reason: data.reason || "ComfyUI bridge quota endpoint",
+            };
+          }
+        }
       } catch {
-        /* native ComfyUI has no /quota */
+        /* Native ComfyUI has no /quota endpoint. */
       }
+
+      // Native ComfyUI's system_stats endpoint is a reachability check only.
+      // It does not expose a trustworthy free quota, so keep remainingUnits null.
       try {
         const sys = await fetch(`${base}/system_stats`, {
           signal: AbortSignal.timeout(2500),
@@ -96,20 +114,25 @@ export function createComfyUiWorker(
         if (sys.ok) {
           return {
             available: true,
-            remainingUnits: 600,
+            remainingUnits: null,
             unit: "gpu-seconds",
-            reason: "ComfyUI system_stats OK (local)",
+            reason: "ComfyUI system_stats reachable; quota is not reported by native ComfyUI",
           };
         }
-      } catch {
-        /* fall through */
+        return {
+          available: false,
+          remainingUnits: null,
+          unit: "gpu-seconds",
+          reason: `ComfyUI system_stats returned HTTP ${sys.status}`,
+        };
+      } catch (error) {
+        return {
+          available: false,
+          remainingUnits: null,
+          unit: "gpu-seconds",
+          reason: error instanceof Error ? error.message : "ComfyUI worker unreachable",
+        };
       }
-      return {
-        available: true,
-        remainingUnits: 300,
-        unit: "gpu-seconds",
-        reason: "Assuming local ComfyUI reachable",
-      };
     },
 
     estimateUnits(req: ShotRequest): number {
