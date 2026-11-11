@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { bharatImageAi, prepareComfyImageAi, type BharatImageOutput } from "@/ai/image-adapter";
 import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Save } from "lucide-react";
 import {
   checkComfyImageWorker,
@@ -51,35 +52,28 @@ export function ComfyImageStudio() {
   }
 
   async function generate() {
-    if (workerUrl.trim()) localStorage.setItem("bharat_comfyui_url", workerUrl.trim().replace(/\/$/, ""));
+    if (workerUrl.trim()) localStorage.setItem("bharat_comfyui_url", workerUrl.trim().replace(/\\/$/, ""));
     if (!prompt.trim()) { setMessage("Enter a scene prompt first."); return; }
     setBusy(true);
     setImages([]);
-    const submitted = await generateComfyImage({ prompt: prompt.trim(), negativePrompt });
-    if (submitted.status === "failed") {
-      setMessage(submitted.error);
+    try {
+      // The explicit Generate click is consent to send this prompt to the configured local ComfyUI worker.
+      await prepareComfyImageAi();
+      const job = await bharatImageAi.start({
+        roleId: "image.generate",
+        input: { prompt: prompt.trim(), negativePrompt },
+        consent: { granted: true, purpose: "Generate the image requested in ComfyUI Image Studio." },
+      });
+      if (job.state !== "succeeded") throw new Error(job.error || "Image generation did not complete.");
+      const output = job.output as BharatImageOutput;
+      if (!output?.images?.length) throw new Error("The adapter completed without returning a verified image artifact.");
+      setImages(output.images);
+      setMessage("Generated " + output.images.length + " image(s) successfully. Job: " + job.id);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image generation failed.");
+    } finally {
       setBusy(false);
-      return;
     }
-    setMessage("Image job queued. Waiting for ComfyUI…");
-    for (let attempt = 0; attempt < 90; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const result = await getComfyImageJob(submitted.promptId);
-      if (result.status === "succeeded") {
-        setImages(result.images);
-        setMessage(`Generated ${result.images.length} image(s) successfully.`);
-        setBusy(false);
-        return;
-      }
-      if (result.status === "failed") {
-        setMessage(result.error);
-        setBusy(false);
-        return;
-      }
-      setMessage(`ComfyUI is processing the image… (${attempt + 1}/90)`);
-    }
-    setMessage("Generation is still running. Check the ComfyUI queue; this screen stopped polling after 3 minutes.");
-    setBusy(false);
   }
 
   return (
@@ -133,7 +127,7 @@ export function ComfyImageStudio() {
           <a href={image.url} target="_blank" rel="noreferrer" className="text-xs text-accent underline">Open original image</a>
         </figure>
       ))}
-      <p className="text-[10px] leading-relaxed text-muted">Requires a running ComfyUI instance reachable from this browser, with CORS enabled. The workflow JSON is saved only in this browser's local storage. It is not a cloud GPU service.</p>
+      <p className="text-[10px] leading-relaxed text-muted">Requires a running ComfyUI instance reachable from this browser, with CORS enabled. The workflow JSON is saved only in this browser's local storage. Pressing Generate sends your prompt to the ComfyUI worker URL you configured. This is not a cloud GPU service.</p>
     </section>
   );
 }
