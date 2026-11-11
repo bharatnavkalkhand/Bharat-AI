@@ -5,7 +5,7 @@ Mobile-first AI movie **production pipeline** for Indian users. Design goal: **�
 **Live:** https://bharat-ai-chi.vercel.app  
 **Repo:** https://github.com/bharatnavkalkhand/Bharat-AI
 
-**Design system:** [DESIGN.md](./DESIGN.md) · **Zero-cost render architecture:** [docs/zero-cost-rendering-plan.md](./docs/zero-cost-rendering-plan.md)
+**Design system:** [DESIGN.md](./DESIGN.md) · **Zero-cost render architecture:** [docs/zero-cost-rendering-plan.md](./docs/zero-cost-rendering-plan.md) · **Generative media stack:** [docs/GENERATIVE_MEDIA_STACK.md](./docs/GENERATIVE_MEDIA_STACK.md) · **Android companion:** [docs/ANDROID_COMPANION.md](./docs/ANDROID_COMPANION.md)
 
 ## Free AI video path (no credits / tokens)
 
