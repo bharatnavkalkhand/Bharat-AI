@@ -9,6 +9,7 @@ import {
   generateTextToImage,
   scenePromptsFromMovie,
 } from "@/agents/text-to-image-agent";
+import { setBharatHfToken } from "@/agents/public-ltx-worker";
 import type { SceneImageFill } from "@/agents/web-image-agent";
 
 export interface DirectorControlsProps {
@@ -54,10 +55,6 @@ export interface DirectorControlsProps {
   };
 }
 
-/**
- * Image + video generator controls for Produce.
- * Free T2I (Pollinations) · optional lip / Comfy · HF worker override.
- */
 export function DirectorControls({
   dualScreen,
   onDualScreenChange,
@@ -87,6 +84,12 @@ export function DirectorControls({
     () =>
       (typeof localStorage !== "undefined" &&
         localStorage.getItem("bharat_comfyui_url")) ||
+      "",
+  );
+  const [hfToken, setHfToken] = useState(
+    () =>
+      (typeof localStorage !== "undefined" &&
+        localStorage.getItem("bharat_hf_token")) ||
       "",
   );
 
@@ -125,20 +128,14 @@ export function DirectorControls({
       return;
     }
     setImgBusy(true);
-    onStatus?.(
-      movie.language === "hi" ? "Text → image… (free)" : "Text → image… (free)",
-    );
+    onStatus?.(movie.language === "hi" ? "Text → image…" : "Text → image…");
     try {
       const prompts = scenePromptsFromMovie(movie);
       const fills: SceneImageFill[] = [];
       for (let i = 0; i < prompts.length; i++) {
         const p = prompts[i]!;
         const scene = movie.scenes.find((s) => s.id === p.sceneId);
-        onStatus?.(
-          movie.language === "hi"
-            ? `Image ${i + 1}/${prompts.length}…`
-            : `Image ${i + 1}/${prompts.length}…`,
-        );
+        onStatus?.(`Image ${i + 1}/${prompts.length}…`);
         const result = await generateTextToImage({
           prompt: p.prompt,
           width: 720,
@@ -159,8 +156,8 @@ export function DirectorControls({
       if (onApplyImages && fills.length) onApplyImages(fills);
       onStatus?.(
         movie.language === "hi"
-          ? `${fills.length} images ready — scenes pe lag gayi`
-          : `${fills.length} images ready on scenes`,
+          ? `${fills.length} images ready`
+          : `${fills.length} images ready`,
       );
     } catch (e) {
       onStatus?.(e instanceof Error ? e.message : "Image generation failed");
@@ -172,11 +169,7 @@ export function DirectorControls({
   async function runLipAnimate() {
     const url = lipSpaceUrl.trim();
     if (!url) {
-      onStatus?.(
-        movie.language === "hi"
-          ? "Pehle Lip Space URL daalein"
-          : "Paste Lip-sync Space URL once",
-      );
+      onStatus?.(movie.language === "hi" ? "Lip Space URL daalo" : "Paste Lip Space URL");
       return;
     }
     if (typeof localStorage !== "undefined") {
@@ -184,15 +177,10 @@ export function DirectorControls({
     }
     const face = firstFace();
     if (!face) {
-      onStatus?.(
-        movie.language === "hi"
-          ? "Cast me face photo lagao"
-          : "Add a face photo on cast first",
-      );
+      onStatus?.(movie.language === "hi" ? "Cast pe face photo" : "Add face photo");
       return;
     }
     setLipBusy(true);
-    onStatus?.(movie.language === "hi" ? "Lip worker…" : "Lip worker…");
     try {
       const worker = createMuseTalkWorker({ spaceUrl: url, mode: "auto" });
       const key = `lip-${movieId || "m"}-${Date.now()}`;
@@ -216,9 +204,9 @@ export function DirectorControls({
         await new Promise((r) => setTimeout(r, 2000));
         const st = await worker.status(remoteJobId);
         if (st.status === "succeeded" && st.videoUrl) {
-          onStatus?.(movie.language === "hi" ? "Lip video ready" : "Lip video ready");
           const sid = firstSceneId();
           if (sid && onGeneratedVideo) onGeneratedVideo(sid, st.videoUrl);
+          onStatus?.("Lip video ready");
           setLipBusy(false);
           return;
         }
@@ -236,18 +224,13 @@ export function DirectorControls({
   async function runComfyImg2Vid() {
     const url = comfyUrl.trim();
     if (!url) {
-      onStatus?.(
-        movie.language === "hi"
-          ? "ComfyUI URL chahiye — ya Run production pipeline se video"
-          : "Need ComfyUI URL — or Run production pipeline for video",
-      );
+      onStatus?.(movie.language === "hi" ? "ComfyUI URL chahiye" : "Need ComfyUI URL");
       return;
     }
     setComfyUiUrl(url);
     setComfyUrl(url);
     const face = firstFace();
     setComfyBusy(true);
-    onStatus?.(movie.language === "hi" ? "ComfyUI video…" : "ComfyUI video…");
     try {
       const worker = createComfyUiWorker({
         baseUrl: url,
@@ -273,9 +256,9 @@ export function DirectorControls({
         await new Promise((r) => setTimeout(r, 2500));
         const st = await worker.status(remoteJobId);
         if (st.status === "succeeded" && st.videoUrl) {
-          onStatus?.(movie.language === "hi" ? "Video ready" : "Video ready");
           const sid = firstSceneId();
           if (sid && onGeneratedVideo) onGeneratedVideo(sid, st.videoUrl);
+          onStatus?.("Video ready");
           setComfyBusy(false);
           return;
         }
@@ -304,18 +287,43 @@ export function DirectorControls({
       >
         {imgBusy
           ? movie.language === "hi"
-            ? "Images ban rahi hain…"
+            ? "Images…"
             : "Generating images…"
           : movie.language === "hi"
             ? "🖼 Text → Image (muft)"
             : "🖼 Text → Image (free)"}
       </button>
 
-      <p className="text-[10px] text-muted leading-relaxed">
-        {movie.language === "hi"
-          ? "Scene prompts se stills (Pollinations · no key). Phir Play / Export ya video."
-          : "Stills from scene prompts (Pollinations · no key). Then Play / Export or video."}
-      </p>
+      <div className="mt-3 space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
+        <p className="text-[10px] font-semibold text-emerald-300">
+          GPU video (ZeroGPU) — free HF token
+        </p>
+        <p className="text-[10px] text-muted leading-relaxed">
+          Anonymous quota jaldi khatam hoti hai. Free account token se zyada runs:
+          huggingface.co/settings/tokens → token yahan paste.
+        </p>
+        <input
+          type="password"
+          autoComplete="off"
+          value={hfToken}
+          onChange={(e) => {
+            setHfToken(e.target.value);
+            setBharatHfToken(e.target.value);
+          }}
+          placeholder="hf_... (optional, browser only)"
+          className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
+        />
+        <input
+          value={workerUrl}
+          onChange={(e) => onWorkerUrlChange?.(e.target.value)}
+          placeholder="Optional: apna HF Space URL"
+          className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
+        />
+        <p className="text-[10px] text-muted">
+          Produce → <strong className="text-fg">Run production pipeline</strong> =
+          public LTX GPU video (token se better).
+        </p>
+      </div>
 
       <label className="mt-2 flex items-center gap-2 text-xs font-medium">
         <input
@@ -323,9 +331,8 @@ export function DirectorControls({
           checked={facePerformance}
           onChange={(e) => onFacePerformanceChange(e.target.checked)}
         />
-        Face / lip overlay on photos
+        Face / lip overlay
       </label>
-
       <label className="mt-1 flex items-center gap-2 text-xs font-medium">
         <input
           type="checkbox"
@@ -334,7 +341,6 @@ export function DirectorControls({
         />
         Dual screen
       </label>
-
       <label className="mt-1 flex items-center gap-2 text-xs font-medium">
         <input
           type="checkbox"
@@ -345,17 +351,7 @@ export function DirectorControls({
       </label>
 
       <div className="mt-3 space-y-1">
-        <p className="text-[10px] font-medium text-muted">Video · optional HF worker</p>
-        <input
-          value={workerUrl}
-          onChange={(e) => onWorkerUrlChange?.(e.target.value)}
-          placeholder="Optional HF Space URL"
-          className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
-        />
-      </div>
-
-      <div className="mt-3 space-y-1">
-        <p className="text-[10px] font-medium text-muted">L · Lip-sync Space</p>
+        <p className="text-[10px] font-medium text-muted">L · Lip Space</p>
         <input
           value={lipSpaceUrl}
           onChange={(e) => {
@@ -378,7 +374,7 @@ export function DirectorControls({
       </div>
 
       <div className="mt-3 space-y-1">
-        <p className="text-[10px] font-medium text-muted">C · Local ComfyUI (strong video)</p>
+        <p className="text-[10px] font-medium text-muted">C · Local ComfyUI</p>
         <input
           value={comfyUrl}
           onChange={(e) => {
@@ -397,11 +393,6 @@ export function DirectorControls({
           {comfyBusy ? "Video…" : "Text / image → video (Comfy)"}
         </button>
       </div>
-
-      <p className="mt-2 text-[10px] leading-relaxed text-muted">
-        <strong className="text-fg">Flow:</strong> Text→Image → Play/Export ·
-        optional HF / Comfy video · optional lips. Public GPU limited.
-      </p>
     </section>
   );
 }
