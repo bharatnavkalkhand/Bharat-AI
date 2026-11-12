@@ -6,15 +6,27 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
  * - Paid per image (~$0.02–$0.08). Free path remains web-image-agent.
  * - If key missing: returns { configured: false } so client can fall back.
  */
+/**
+ * Paid calls are OFF unless the operator explicitly sets BOTH
+ * ALLOW_PAID_PROVIDERS=true and XAI_API_KEY. A key alone is never enough,
+ * so the app stays ₹0 by default.
+ */
+function paidImagineAllowed(): { allowed: boolean; apiKey?: string } {
+  const apiKey = process.env.XAI_API_KEY;
+  const optIn = process.env.ALLOW_PAID_PROVIDERS === "true";
+  if (!optIn || !apiKey) return { allowed: false };
+  return { allowed: true, apiKey };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
-    const key = process.env.XAI_API_KEY;
+    const { allowed } = paidImagineAllowed();
     return res.status(200).json({
-      configured: Boolean(key && key.length > 8),
+      configured: allowed,
       model: "grok-imagine-image-2.0",
-      note: key
-        ? "Grok Imagine ready (usage billed to your xAI account)."
-        : "Set XAI_API_KEY in Vercel → Settings → Environment Variables to enable.",
+      note: allowed
+        ? "Grok Imagine enabled by ALLOW_PAID_PROVIDERS (usage billed to your xAI account)."
+        : "Paid Grok Imagine is off (free default). To opt in, set ALLOW_PAID_PROVIDERS=true and XAI_API_KEY in Vercel env.",
     });
   }
 
@@ -22,13 +34,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) {
+  const { allowed, apiKey } = paidImagineAllowed();
+  if (!allowed || !apiKey) {
     return res.status(200).json({
       ok: false,
       configured: false,
       message:
-        "XAI_API_KEY not set. Add it in Vercel env, or use free B · Auto-fill / Import.",
+        "Paid Grok Imagine is off (free default). Use free B · Auto-fill / Import, or opt in with ALLOW_PAID_PROVIDERS=true and XAI_API_KEY.",
     });
   }
 

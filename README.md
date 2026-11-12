@@ -63,7 +63,7 @@ Server-side Script Agent can use OmniRoute → Groq → browser engine. Keys sta
 
 ### Paid optional path (not required)
 
-- Grok Imagine frames need `XAI_API_KEY` on Vercel. Free path **B** remains available without it.
+- Grok Imagine (paid) is OFF by default. It runs only if both `ALLOW_PAID_PROVIDERS=true` and `XAI_API_KEY` are set on Vercel. Free path **B** works without either.
 
 ## Local dev
 
