@@ -1,9 +1,13 @@
 /**
  * Hugging Face ZeroGPU Gradio adapter — Wan 2.1 T2V 1.3B
  *
- * Public Space (no token in browser):
+ * Endpoints:
  *   POST {space}/gradio_api/call/generate
  *   GET  {space}/gradio_api/call/generate/{event_id}
+ *
+ * Optional HF token: if localStorage 'bharat_hf_token' is set (a read-only
+ * token from the user's own HF account), it is sent as a Bearer header to
+ * raise the ZeroGPU quota. It stays in the browser; nothing is committed.
  *
  * Free tier quota is limited and varies by account/Space. Generates short,
  * silent 16:9 clips only; audio is added in a separate stage.
@@ -16,6 +20,15 @@ import {
   type WorkerQuota,
   QuotaUnavailableError,
 } from "./gpu-worker-pool";
+
+/** Optional user HF token from browser storage (same key as the LTX client). */
+function hfAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (typeof localStorage === "undefined") return headers;
+  const token = (localStorage.getItem("bharat_hf_token") || "").trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
 
 /** Map duration → supported frame counts (16 fps in worker) */
 export function durationToFrames(durationSec: number): 17 | 33 | 49 {
@@ -114,7 +127,7 @@ async function gradioCall(
 ): Promise<string> {
   const res = await fetch(`${spaceBase}/gradio_api/call/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hfAuthHeaders(),
     body: JSON.stringify({ data: [prompt, numFrames, seed] }),
   });
 
@@ -154,7 +167,7 @@ async function gradioPoll(
   const url = `${spaceBase}/gradio_api/call/generate/${encodeURIComponent(eventId)}`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: hfAuthHeaders() });
     if (res.status === 429 || res.status === 503) {
       return {
         status: "failed",
