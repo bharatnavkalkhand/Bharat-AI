@@ -1,0 +1,8 @@
+{
+  "appId": "com.bharatai.studio",
+  "appName": "Bharat AI",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  }
+}
