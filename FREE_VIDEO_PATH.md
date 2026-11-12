@@ -51,6 +51,14 @@ to storyboard placeholders for remaining scenes.
 | Audio | Silent clips only; audio is added in a separate TTS stage |
 | Queue wait | 30 s – 4 min depending on Space load |
 
+### Optional HF token (higher free quota)
+- Create a **read-only** token at https://huggingface.co/settings/tokens.
+- Paste it into the token field in Director controls. It is saved in your browser only (`localStorage` key `bharat_hf_token`).
+- It is sent as a Bearer header to the ZeroGPU Space to raise your daily quota. It is never committed to source control and is not needed for the default path.
+
+### Paid providers are off by default
+- Grok Imagine (xAI) is the only paid option in the repo. It runs only if the server has **both** `ALLOW_PAID_PROVIDERS=true` and `XAI_API_KEY`. A key alone does nothing.
+
 ---
 
 ## Path B — MuseTalk / LivePortrait lip-sync (optional)
