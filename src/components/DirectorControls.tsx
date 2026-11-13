@@ -9,7 +9,12 @@ import {
   generateTextToImage,
   scenePromptsFromMovie,
 } from "@/agents/text-to-image-agent";
-import { setBharatHfToken } from "@/agents/public-ltx-worker";
+import {
+  createPublicLtxWorker,
+  setBharatHfToken,
+  getBharatHfToken,
+} from "@/agents/public-ltx-worker";
+import { generateSilentClip } from "@/agents/hf-zerogpu-worker";
 import type { SceneImageFill } from "@/agents/web-image-agent";
 
 export interface DirectorControlsProps {
@@ -74,6 +79,8 @@ export function DirectorControls({
   const [lipBusy, setLipBusy] = useState(false);
   const [comfyBusy, setComfyBusy] = useState(false);
   const [imgBusy, setImgBusy] = useState(false);
+  const [gpuBusy, setGpuBusy] = useState(false);
+  const [showToken, setShowToken] = useState(false);
   const [lipSpaceUrl, setLipSpaceUrl] = useState(
     () =>
       (typeof localStorage !== "undefined" &&
@@ -93,6 +100,8 @@ export function DirectorControls({
       "",
   );
 
+  const tokenSaved = Boolean(hfToken.trim() || getBharatHfToken());
+
   function firstFace(): string {
     return (
       movie.characters?.find((c) => c.referenceImageLocal || c.referenceImageUrl)
@@ -106,6 +115,10 @@ export function DirectorControls({
     return movie.scenes.slice().sort((a, b) => a.order - b.order)[0]?.id;
   }
 
+  function firstScene() {
+    return movie.scenes.slice().sort((a, b) => a.order - b.order)[0];
+  }
+
   function dialogueBlob(): string {
     return (
       movie.scenes
@@ -116,6 +129,32 @@ export function DirectorControls({
         .join(" ")
         .slice(0, 240) || movie.title
     );
+  }
+
+  function scenePrompt(): string {
+    const scene = firstScene();
+    if (!scene) return movie.title;
+    const cast =
+      movie.characters
+        ?.map((c) => [c.name, c.role, c.appearance].filter(Boolean).join(", "))
+        .filter(Boolean)
+        .join("; ") || "";
+    return [
+      scene.visualPrompt || scene.title,
+      scene.mood ? `Mood: ${scene.mood}` : "",
+      cast ? `Characters: ${cast}` : "",
+      scene.dialogue || scene.narration
+        ? `Context: ${scene.dialogue || scene.narration}`
+        : "",
+      "Photorealistic live-action cinematic video, natural movement, cinematic lighting, no text, no subtitles.",
+    ]
+      .filter(Boolean)
+      .join(". ");
+  }
+
+  function persistToken(value: string) {
+    setHfToken(value);
+    setBharatHfToken(value);
   }
 
   async function runTextToImage() {
@@ -163,6 +202,96 @@ export function DirectorControls({
       onStatus?.(e instanceof Error ? e.message : "Image generation failed");
     } finally {
       setImgBusy(false);
+    }
+  }
+
+  /** Produce short silent GPU video in the web UI (public LTX or own HF Space). */
+  async function runGpuVideo() {
+    if (!movie.scenes.length) {
+      onStatus?.(
+        movie.language === "hi"
+          ? "Pehle script / scenes banao"
+          : "Generate script/scenes first",
+      );
+      return;
+    }
+    const scene = firstScene();
+    if (!scene) return;
+
+    setGpuBusy(true);
+    onStatus?.(
+      movie.language === "hi"
+        ? "GPU video queue… (1–3 min)"
+        : "GPU video queued… (1–3 min)",
+    );
+
+    try {
+      const ownSpace = workerUrl.trim();
+      if (ownSpace) {
+        const generated = await generateSilentClip({
+          spaceUrl: ownSpace,
+          prompt: scenePrompt(),
+          durationSec: 2,
+          seed: 42 + scene.order,
+          onProgress: (m) => onStatus?.(m),
+        });
+        if ("error" in generated) throw new Error(generated.error);
+        if (onGeneratedVideo) onGeneratedVideo(scene.id, generated.videoUrl);
+        onStatus?.(
+          movie.language === "hi"
+            ? "Video ready — scene player me dekho"
+            : "Video ready — check scene player",
+        );
+        return;
+      }
+
+      // Default: public LTX ZeroGPU (token improves quota)
+      const worker = createPublicLtxWorker();
+      const { remoteJobId } = await worker.submit(
+        {
+          movieId: movieId || "local",
+          sceneId: scene.id,
+          prompt: scenePrompt(),
+          aspectRatio: "16:9",
+          width: 832,
+          height: 480,
+          durationSec: 4,
+          seed: 42 + scene.order,
+        },
+        `ui-ltx-${movieId || "m"}-${scene.id}-${Date.now()}`,
+      );
+
+      let tries = 0;
+      while (tries < 120) {
+        await new Promise((r) => setTimeout(r, 2500));
+        const st = await worker.status(remoteJobId);
+        if (st.status === "succeeded" && st.videoUrl) {
+          if (onGeneratedVideo) onGeneratedVideo(scene.id, st.videoUrl);
+          onStatus?.(
+            movie.language === "hi"
+              ? "GPU video ready — player me play karo"
+              : "GPU video ready — play in scene player",
+          );
+          return;
+        }
+        if (st.status === "failed") {
+          throw new Error(st.error || "GPU video failed");
+        }
+        tries += 1;
+        if (tries % 8 === 0) {
+          onStatus?.(
+            movie.language === "hi"
+              ? `Abhi generate ho raha hai… (${tries})`
+              : `Still generating… (${tries})`,
+          );
+        }
+      }
+      throw new Error("GPU video timeout");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "GPU video failed";
+      onStatus?.(msg);
+    } finally {
+      setGpuBusy(false);
     }
   }
 
@@ -273,7 +402,8 @@ export function DirectorControls({
     }
   }
 
-  const disabled = lipBusy || comfyBusy || imgBusy || !movie.scenes.length;
+  const disabled =
+    lipBusy || comfyBusy || imgBusy || gpuBusy || !movie.scenes.length;
 
   return (
     <section className="mb-4 space-y-2 rounded-xl border border-border bg-card p-3">
@@ -294,34 +424,80 @@ export function DirectorControls({
             : "🖼 Text → Image (free)"}
       </button>
 
-      <div className="mt-3 space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
+      <div className="mt-3 space-y-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
         <p className="text-[10px] font-semibold text-emerald-300">
-          GPU video (ZeroGPU) — free HF token
+          Secure HF token · browser only
         </p>
         <p className="text-[10px] text-muted leading-relaxed">
-          Anonymous quota jaldi khatam hoti hai. Free account token se zyada runs:
-          huggingface.co/settings/tokens → token yahan paste.
+          Token is blurred, saved only in this browser (localStorage). Never
+          committed to Git. Read-only token from{" "}
+          <a
+            className="underline text-emerald-300/90"
+            href="https://huggingface.co/settings/tokens"
+            target="_blank"
+            rel="noreferrer"
+          >
+            huggingface.co/settings/tokens
+          </a>
+          .
         </p>
-        <input
-          type="password"
-          autoComplete="off"
-          value={hfToken}
-          onChange={(e) => {
-            setHfToken(e.target.value);
-            setBharatHfToken(e.target.value);
-          }}
-          placeholder="hf_... (optional, browser only)"
-          className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
-        />
+        <div className="flex gap-1">
+          <input
+            type={showToken ? "text" : "password"}
+            autoComplete="off"
+            spellCheck={false}
+            value={hfToken}
+            onChange={(e) => persistToken(e.target.value)}
+            placeholder="hf_… (blurred, optional)"
+            className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] tracking-wider outline-none focus:border-accent"
+          />
+          <button
+            type="button"
+            className="shrink-0 rounded-lg border border-border px-2 text-[10px] text-muted"
+            onClick={() => setShowToken((v) => !v)}
+            title={showToken ? "Hide token" : "Show token"}
+          >
+            {showToken ? "Hide" : "Show"}
+          </button>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg border border-border px-2 text-[10px] text-muted"
+            onClick={() => persistToken("")}
+            title="Clear token from this browser"
+          >
+            Clear
+          </button>
+        </div>
+        <p className="text-[10px] text-muted">
+          {tokenSaved
+            ? "Token saved in this browser · used for ZeroGPU quota"
+            : "No token · anonymous quota is smaller"}
+        </p>
+
         <input
           value={workerUrl}
           onChange={(e) => onWorkerUrlChange?.(e.target.value)}
-          placeholder="Optional: apna HF Space URL"
+          placeholder="Optional: your HF Space URL"
           className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-[11px] outline-none focus:border-accent"
         />
+
+        <button
+          type="button"
+          disabled={disabled}
+          className="w-full rounded-xl border border-emerald-500/50 bg-emerald-500/20 py-2.5 text-xs font-bold text-emerald-100 disabled:opacity-40"
+          onClick={() => void runGpuVideo()}
+        >
+          {gpuBusy
+            ? movie.language === "hi"
+              ? "GPU video… (1–3 min)"
+              : "Generating GPU video… (1–3 min)"
+            : movie.language === "hi"
+              ? "▶ GPU video banao (web UI)"
+              : "▶ Generate GPU video (in web UI)"}
+        </button>
         <p className="text-[10px] text-muted">
-          Produce → <strong className="text-fg">Run production pipeline</strong> =
-          public LTX GPU video (token se better).
+          Uses public LTX ZeroGPU by default (token helps quota), or your Space
+          URL if set. Clip attaches to the first scene for playback in the app.
         </p>
       </div>
 
