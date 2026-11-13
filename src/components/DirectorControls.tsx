@@ -14,8 +14,10 @@ import {
   setBharatHfToken,
   getBharatHfToken,
 } from "@/agents/public-ltx-worker";
+import { createPublicMinimaxWorker } from "@/agents/public-minimax-worker";
 import { generateSilentClip } from "@/agents/hf-zerogpu-worker";
 import type { SceneImageFill } from "@/agents/web-image-agent";
+import type { GpuWorkerAdapter, ShotRequest } from "@/agents/gpu-worker-pool";
 
 export interface DirectorControlsProps {
   dualScreen: boolean;
@@ -58,6 +60,27 @@ export interface DirectorControlsProps {
       referenceImageUrl?: string;
     }>;
   };
+}
+
+async function pollWorkerVideo(
+  worker: GpuWorkerAdapter,
+  request: ShotRequest,
+  key: string,
+  onTick?: (n: number) => void,
+): Promise<string> {
+  const { remoteJobId } = await worker.submit(request, key);
+  let tries = 0;
+  while (tries < 120) {
+    await new Promise((r) => setTimeout(r, 2500));
+    const st = await worker.status(remoteJobId);
+    if (st.status === "succeeded" && st.videoUrl) return st.videoUrl;
+    if (st.status === "failed") {
+      throw new Error(st.error || "GPU worker failed");
+    }
+    tries += 1;
+    if (tries % 8 === 0) onTick?.(tries);
+  }
+  throw new Error("GPU video timeout");
 }
 
 export function DirectorControls({
@@ -205,7 +228,7 @@ export function DirectorControls({
     }
   }
 
-  /** Produce short silent GPU video in the web UI (public LTX or own HF Space). */
+  /** Own Space → LTX → MiniMax. Clip attaches via onGeneratedVideo. */
   async function runGpuVideo() {
     if (!movie.scenes.length) {
       onStatus?.(
@@ -225,6 +248,26 @@ export function DirectorControls({
         : "GPU video queued… (1–3 min)",
     );
 
+    const request: ShotRequest = {
+      movieId: movieId || "local",
+      sceneId: scene.id,
+      prompt: scenePrompt(),
+      aspectRatio: "16:9",
+      width: 832,
+      height: 480,
+      durationSec: 4,
+      seed: 42 + scene.order,
+    };
+
+    const finish = (videoUrl: string, engine: string) => {
+      if (onGeneratedVideo) onGeneratedVideo(scene.id, videoUrl);
+      onStatus?.(
+        movie.language === "hi"
+          ? `Video ready (${engine}) — player me dekho`
+          : `Video ready (${engine}) — play below`,
+      );
+    };
+
     try {
       const ownSpace = workerUrl.trim();
       if (ownSpace) {
@@ -236,60 +279,62 @@ export function DirectorControls({
           onProgress: (m) => onStatus?.(m),
         });
         if ("error" in generated) throw new Error(generated.error);
-        if (onGeneratedVideo) onGeneratedVideo(scene.id, generated.videoUrl);
-        onStatus?.(
-          movie.language === "hi"
-            ? "Video ready — scene player me dekho"
-            : "Video ready — check scene player",
-        );
+        finish(generated.videoUrl, "your HF Space");
         return;
       }
 
-      // Default: public LTX ZeroGPU (token improves quota)
-      const worker = createPublicLtxWorker();
-      const { remoteJobId } = await worker.submit(
-        {
-          movieId: movieId || "local",
-          sceneId: scene.id,
-          prompt: scenePrompt(),
-          aspectRatio: "16:9",
-          width: 832,
-          height: 480,
-          durationSec: 4,
-          seed: 42 + scene.order,
-        },
-        `ui-ltx-${movieId || "m"}-${scene.id}-${Date.now()}`,
-      );
+      const errors: string[] = [];
 
-      let tries = 0;
-      while (tries < 120) {
-        await new Promise((r) => setTimeout(r, 2500));
-        const st = await worker.status(remoteJobId);
-        if (st.status === "succeeded" && st.videoUrl) {
-          if (onGeneratedVideo) onGeneratedVideo(scene.id, st.videoUrl);
-          onStatus?.(
-            movie.language === "hi"
-              ? "GPU video ready — player me play karo"
-              : "GPU video ready — play in scene player",
-          );
-          return;
-        }
-        if (st.status === "failed") {
-          throw new Error(st.error || "GPU video failed");
-        }
-        tries += 1;
-        if (tries % 8 === 0) {
-          onStatus?.(
-            movie.language === "hi"
-              ? `Abhi generate ho raha hai… (${tries})`
-              : `Still generating… (${tries})`,
-          );
-        }
+      // 1) Public LTX
+      try {
+        onStatus?.(movie.language === "hi" ? "LTX ZeroGPU…" : "Trying LTX ZeroGPU…");
+        const url = await pollWorkerVideo(
+          createPublicLtxWorker(),
+          request,
+          `ui-ltx-${movieId || "m"}-${scene.id}-${Date.now()}`,
+          (n) =>
+            onStatus?.(
+              movie.language === "hi"
+                ? `LTX generate… (${n})`
+                : `LTX generating… (${n})`,
+            ),
+        );
+        finish(url, "LTX");
+        return;
+      } catch (e) {
+        errors.push(`LTX: ${e instanceof Error ? e.message : String(e)}`);
       }
-      throw new Error("GPU video timeout");
+
+      // 2) Public MiniMax-H3 fallback
+      try {
+        onStatus?.(
+          movie.language === "hi"
+            ? "LTX fail — MiniMax try…"
+            : "LTX failed — trying MiniMax…",
+        );
+        const url = await pollWorkerVideo(
+          createPublicMinimaxWorker(),
+          { ...request, durationSec: Math.min(5, request.durationSec) },
+          `ui-mm-${movieId || "m"}-${scene.id}-${Date.now()}`,
+          (n) =>
+            onStatus?.(
+              movie.language === "hi"
+                ? `MiniMax generate… (${n})`
+                : `MiniMax generating… (${n})`,
+            ),
+        );
+        finish(url, "MiniMax");
+        return;
+      } catch (e) {
+        errors.push(`MiniMax: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+      const hint = tokenSaved
+        ? " Shared free GPUs are busy. Retry in a few minutes or paste your own HF Space URL."
+        : " Add a free HF token (blurred field above) for better ZeroGPU quota, then retry.";
+      throw new Error(errors.join(" | ") + hint);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "GPU video failed";
-      onStatus?.(msg);
+      onStatus?.(e instanceof Error ? e.message : "GPU video failed");
     } finally {
       setGpuBusy(false);
     }
@@ -496,8 +541,8 @@ export function DirectorControls({
               : "▶ Generate GPU video (in web UI)"}
         </button>
         <p className="text-[10px] text-muted">
-          Uses public LTX ZeroGPU by default (token helps quota), or your Space
-          URL if set. Clip attaches to the first scene for playback in the app.
+          Auto path: your Space URL → public LTX → public MiniMax. HF token
+          improves shared ZeroGPU quota. Clip plays in the app when ready.
         </p>
       </div>
 
