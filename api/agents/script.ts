@@ -2,8 +2,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 /**
  * Optional OpenAI-compatible LLM enhancement.
- * Priority: OmniRoute (if configured) -> Groq (if configured) -> local browser engine.
+ * Priority: OmniRoute -> direct Mistral -> Groq -> browser engine.
  * Provider credentials stay server-side; never expose them to the browser.
+ *
+ * Mistral is opt-in: configure MISTRAL_API_KEY. API inference is not free;
+ * use only when the account has an approved budget/allowance.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -21,13 +24,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const omniKey = process.env.OMNIROUTE_API_KEY;
   const omniBase = (process.env.OMNIROUTE_BASE_URL || "").trim().replace(/\/+$/, "");
   const omniModel = process.env.OMNIROUTE_MODEL || "auto";
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  const mistralModel = process.env.MISTRAL_MODEL || "ministral-8b-2512";
   const groqKey = process.env.GROQ_API_KEY;
 
   if (!omniKey || !omniBase) {
-    if (!groqKey) {
+    if (!mistralKey && !groqKey) {
       return res.status(200).json({
         useLocal: true,
-        message: "No LLM provider configured. Client will use the browser Script Agent.",
+        message: "No cloud LLM provider configured. Client will use the browser Script Agent.",
       });
     }
   }
@@ -89,6 +94,20 @@ mood must be one of: fight, romance, gesture, dialogue, action, emotional, drama
       }
     }
 
+    if (!r?.ok && mistralKey) {
+      try {
+        r = await requestModel(
+          "https://api.mistral.ai/v1/chat/completions",
+          mistralKey,
+          mistralModel,
+        );
+        if (r.ok) provider = "mistral";
+        else lastFailure = `Mistral returned HTTP ${r.status}`;
+      } catch (e) {
+        lastFailure = e instanceof Error ? e.message : "Mistral connection failed";
+      }
+    }
+
     if (!r?.ok && groqKey) {
       try {
         r = await requestModel(
@@ -127,7 +146,7 @@ mood must be one of: fight, romance, gesture, dialogue, action, emotional, drama
         scenes: parsed.scenes || [],
         fullScriptText: JSON.stringify(parsed, null, 2),
         language: body.language === "hi" ? "hi" : "en",
-        note: `Generated via ${provider}; provider quotas and limits apply.`,
+        note: `Generated via ${provider}; provider quotas, pricing, and limits apply.`,
       },
     });
   } catch (e) {
