@@ -5,6 +5,8 @@ name: Build Android APK (free)
 # Free for public repositories; no paid services, no secrets.
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read
