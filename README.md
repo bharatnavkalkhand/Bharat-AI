@@ -1,8 +1,9 @@
-# Bharat AI — Avatar Movie Studio
+# Bharat AI — Free Prompt-to-High-Res Image & Video Generator
 
-Mobile-first AI movie **production pipeline** for Indian users. Design goal: **₹0 operating cost** where possible, with honest limits.
+Mobile-first AI **prompt-to-media studio** for Indian users. Design goal: **₹0 operating cost** where possible, with honest limits.
 
 **Live:** https://bharat-ai-chi.vercel.app  
+**Free generator:** https://bharat-ai-chi.vercel.app/generate  
 **Repo:** https://github.com/bharatnavkalkhand/Bharat-AI
 
 **Design system:** [DESIGN.md](./DESIGN.md) · **Zero-cost render architecture:** [docs/zero-cost-rendering-plan.md](./docs/zero-cost-rendering-plan.md) · **Generative media stack:** [docs/GENERATIVE_MEDIA_STACK.md](./docs/GENERATIVE_MEDIA_STACK.md) · **Android companion:** [docs/ANDROID_COMPANION.md](./docs/ANDROID_COMPANION.md)
@@ -11,7 +12,7 @@ Mobile-first AI movie **production pipeline** for Indian users. Design goal: **�
 
 This is the supported **zero-paid** path. No Flixier reverse-engineering. Public patterns + open-source workers only.
 
-**Prompt-based free high-res:** See [HIGH_RES_FREE_PROMPT.md](./HIGH_RES_FREE_PROMPT.md) — write a scene prompt and get free high-resolution stills (Pollinations) + short AI video clips (HF ZeroGPU / public Spaces).
+**Prompt-based free high-res:** See [HIGH_RES_FREE_PROMPT.md](./HIGH_RES_FREE_PROMPT.md) — write a scene prompt and get free high-resolution stills (Pollinations) + short AI video clips (HF ZeroGPU / public Spaces). Use the dedicated **/generate** page for one-off generations, or the full Produce pipeline for movies.
 
 ### Zero-paid-cost capabilities and prerequisites
 
@@ -19,7 +20,7 @@ This is the supported **zero-paid** path. No Flixier reverse-engineering. Public
 |-------|-----------|--------|
 | Script | Browser engine + optional Groq free-tier | No key required for browser path |
 | Voice | Browser Web Speech | System voices (not true clones) |
-| Still art (high-res) | Pollinations public API (no key) + external import | Defaults raised to 1024+; Civitai / Roar guided import |
+| Still art (high-res) | Pollinations public API (no key) + external import | Defaults raised to 1024+ / 1280×720; Civitai / Roar guided import |
 | Short AI video | Wan 2.1 1.3B worker source is included + public LTX/MiniMax Spaces | Bharat AI sends scene prompts to a separately running compatible free worker; no manual video attachment is needed |
 | Lip-sync upgrade | MuseTalk / LivePortrait Space | Optional; see `workers/musetalk/` |
 | Preview / export | Client scene player + MediaPipe face overlay | Storyboard fallback only; not diffusion video |
