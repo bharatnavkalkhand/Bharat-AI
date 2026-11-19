@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import { HomePage } from "./pages/HomePage";
 import { CreateMoviePage } from "./pages/CreateMoviePage";
 import { MovieWorkspacePage } from "./pages/MovieWorkspacePage";
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/movie/:movieId/*" element={<MovieWorkspacePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Analytics />
     </div>
   );
 }
