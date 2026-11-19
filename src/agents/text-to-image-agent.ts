@@ -3,18 +3,21 @@
  *
  * Uses Pollinations public image API — no API key, no HF Space setup.
  * Honest limits: public rate limits, variable quality, not photoreal face ID.
+ * High-resolution friendly: defaults raised for clearer stills.
  *
  * Flow: scene visualPrompt / title → image URL → optional blob data-URL for offline store.
  */
 
 export interface TextToImageInput {
   prompt: string;
-  /** Default 9:16 portrait for Reels-style scenes */
+  /** Default higher-res for free high-quality stills (Pollinations supports) */
   width?: number;
   height?: number;
   seed?: number;
   /** Prefer cinematic Indian film still look */
   styleHint?: string;
+  /** Force high-resolution mode */
+  highRes?: boolean;
 }
 
 export interface TextToImageResult {
@@ -25,21 +28,22 @@ export interface TextToImageResult {
 }
 
 function buildPrompt(input: TextToImageInput): string {
-  const base = (input.prompt || "cinematic scene").trim().slice(0, 400);
+  const base = (input.prompt || "cinematic scene").trim().slice(0, 500);
   const style =
     input.styleHint ||
-    "cinematic film still, photoreal, dramatic lighting, Indian cinema, clear faces, no text, no watermark";
+    "cinematic film still, photoreal, dramatic lighting, Indian cinema, clear faces, sharp details, high resolution, no text, no watermark";
   return `${base}, ${style}`;
 }
 
 /** Public Pollinations image URL (works as <img src> even if fetch is CORS-blocked). */
 export function buildPollinationsImageUrl(input: TextToImageInput): string {
   const prompt = buildPrompt(input);
-  const width = input.width ?? 720;
-  const height = input.height ?? 1280;
+  // Higher defaults for free high-res path
+  const width = input.width ?? (input.highRes ? 1280 : 1024);
+  const height = input.height ?? (input.highRes ? 720 : 1024);
   const seed = input.seed ?? Math.floor(Math.random() * 1_000_000);
   const q = encodeURIComponent(prompt);
-  return `https://image.pollinations.ai/prompt/${q}?width=${width}&height=${height}&seed=${seed}&nologo=true&enhance=true`;
+  return `https://image.pollinations.ai/prompt/${q}?width=${width}&height=${height}&seed=${seed}&nologo=true&enhance=true&model=flux`;
 }
 
 /**

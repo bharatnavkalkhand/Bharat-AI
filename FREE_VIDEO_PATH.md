@@ -2,6 +2,8 @@
 
 Canonical guide for turning Bharat AI into a **usable free AI video generator** without paid credits.
 
+**Also see:** [HIGH_RES_FREE_PROMPT.md](./HIGH_RES_FREE_PROMPT.md) for the prompt-based high-resolution image + short video workflow.
+
 ## Principles
 
 1. Canonical repo: `bharatnavkalkhand/Bharat-AI` only.
@@ -87,6 +89,14 @@ Use after you have a face portrait + TTS/imported audio.
 
 ---
 
+## Free high-resolution images
+
+- Client: `src/agents/text-to-image-agent.ts`
+- Public Pollinations API (no key). Defaults now higher resolution (1024+).
+- Works directly from scene prompts in Produce.
+
+---
+
 ## Acceptance checklist
 
 - [x] User can run Script + Voice with zero keys
@@ -97,6 +107,7 @@ Use after you have a face portrait + TTS/imported audio.
 - [x] No paid keys required for the above
 - [x] SSE stream read correctly (streaming, no full-body buffering)
 - [x] ZeroGPU-compatible app.py (no module-level CUDA; lazy pipe.to("cuda"))
+- [x] Free high-res stills via Pollinations
 
 ---
 
