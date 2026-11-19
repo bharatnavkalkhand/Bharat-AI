@@ -1,11 +1,11 @@
 /**
- * Free text-to-image for Bharat AI scenes / cast stills.
+ * Free text-to-image for Bharat AI scenes / cast stills / prompt generator.
  *
  * Uses Pollinations public image API — no API key, no HF Space setup.
- * Honest limits: public rate limits, variable quality, not photoreal face ID.
- * High-resolution friendly: defaults raised for clearer stills.
+ * Honest limits: public rate limits (~45s between free requests), variable quality, not photoreal face ID.
+ * High-resolution friendly: defaults raised for clearer stills (up to 1280×720 on free path).
  *
- * Flow: scene visualPrompt / title → image URL → optional blob data-URL for offline store.
+ * Flow: scene visualPrompt / title or direct prompt → image URL → optional blob data-URL for offline store.
  */
 
 export interface TextToImageInput {
@@ -38,7 +38,7 @@ function buildPrompt(input: TextToImageInput): string {
 /** Public Pollinations image URL (works as <img src> even if fetch is CORS-blocked). */
 export function buildPollinationsImageUrl(input: TextToImageInput): string {
   const prompt = buildPrompt(input);
-  // Higher defaults for free high-res path
+  // Higher defaults for free high-res path (classic API rate-limited but no key)
   const width = input.width ?? (input.highRes ? 1280 : 1024);
   const height = input.height ?? (input.highRes ? 720 : 1024);
   const seed = input.seed ?? Math.floor(Math.random() * 1_000_000);
