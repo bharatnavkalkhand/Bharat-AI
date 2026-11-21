@@ -303,3 +303,213 @@ export function setComfyUiUrl(url: string): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem("bharat_comfyui_url", url.trim().replace(/\/$/, ""));
 }
+
+export interface ComfyWorkflowConfig {
+  workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+  promptNodeId: string;
+  imageNodeId?: string;
+}
+
+export interface ComfyWorkerStatus {
+  available: boolean;
+  reason: string;
+}
+
+const COMFY_URL_STORAGE_KEY = "bharat_comfyui_url";
+const COMFY_WORKFLOW_STORAGE_KEY = "bharat_comfyui_workflow";
+
+// Built-in starter workflow (Wan 2.1 T2V 1.3B API format) so non-programmers never have to paste raw JSON
+export const DEFAULT_COMFY_VIDEO_WORKFLOW: ComfyWorkflowConfig = {
+  promptNodeId: "6",
+  workflow: {
+    "3": {
+      class_type: "KSampler",
+      inputs: {
+        seed: 42,
+        steps: 20,
+        cfg: 6.0,
+        sampler_name: "uni_pc",
+        scheduler: "simple",
+        denoise: 1.0,
+        model: ["37", 0],
+        positive: ["6", 0],
+        negative: ["7", 0],
+        latent_image: ["40", 0],
+      },
+    },
+    "6": {
+      class_type: "CLIPTextEncode",
+      inputs: { text: "Cinematic realistic scene", clip: ["38", 0] },
+    },
+    "7": {
+      class_type: "CLIPTextEncode",
+      inputs: { text: "blurry, distorted, watermark, text, low quality", clip: ["38", 0] },
+    },
+    "8": {
+      class_type: "VAEDecode",
+      inputs: { samples: ["3", 0], vae: ["39", 0] },
+    },
+    "37": { class_type: "UNETLoader", inputs: { unet_name: "wan2.1_t2v_1.3B_fp16.safetensors", weight_dtype: "default" } },
+    "38": { class_type: "CLIPLoader", inputs: { clip_name: "umt5_xxl_fp8_e4m3fn_scaled.safetensors", type: "wan" } },
+    "39": { class_type: "VAELoader", inputs: { vae_name: "wan_2.1_vae.safetensors" } },
+    "40": { class_type: "EmptyHunyuanLatentVideo", inputs: { width: 832, height: 480, length: 49, batch_size: 1 } },
+    "49": { class_type: "SaveWEBM", inputs: { filename_prefix: "bharat_ai", codec: "vp9", fps: 16, crf: 28, images: ["8", 0] } },
+  },
+};
+
+export function normalizeComfyUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
+}
+
+export function readComfyUrl(): string {
+  try {
+    return typeof localStorage !== "undefined"
+      ? normalizeComfyUrl(localStorage.getItem(COMFY_URL_STORAGE_KEY) || "")
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveComfyUrl(url: string): string {
+  const normalized = normalizeComfyUrl(url);
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(COMFY_URL_STORAGE_KEY, normalized);
+  }
+  return normalized;
+}
+
+export function loadComfyWorkflow(): ComfyWorkflowConfig {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(COMFY_WORKFLOW_STORAGE_KEY) : null;
+    if (!raw) return DEFAULT_COMFY_VIDEO_WORKFLOW;
+    const parsed = JSON.parse(raw) as ComfyWorkflowConfig;
+    if (!parsed?.workflow || typeof parsed.workflow !== "object" || !parsed.promptNodeId) {
+      return DEFAULT_COMFY_VIDEO_WORKFLOW;
+    }
+    return parsed;
+  } catch {
+    return DEFAULT_COMFY_VIDEO_WORKFLOW;
+  }
+}
+
+export function saveComfyWorkflow(config: ComfyWorkflowConfig): void {
+  if (!config.workflow || typeof config.workflow !== "object") {
+    throw new Error("ComfyUI workflow must be a valid API-format JSON object.");
+  }
+  if (!config.promptNodeId || !config.workflow[config.promptNodeId]) {
+    throw new Error("Prompt node ID must exist in the ComfyUI workflow.");
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(COMFY_WORKFLOW_STORAGE_KEY, JSON.stringify(config));
+  }
+}
+
+export async function checkComfyWorker(): Promise<ComfyWorkerStatus> {
+  const base = readComfyUrl();
+  if (!base) {
+    return {
+      available: false,
+      reason: "Enter your ComfyUI URL (for mobile APK, use an https:// tunnel like Cloudflare Quick Tunnel or Tailscale).",
+    };
+  }
+  try {
+    const res = await fetch(`${base}/system_stats`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return { available: false, reason: `ComfyUI worker responded with HTTP ${res.status}.` };
+    return { available: true, reason: "ComfyUI worker connected (preset workflow ready)." };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Network error";
+    const isHttpFromApk = base.startsWith("http://") && typeof window !== "undefined" && window.location.protocol === "https:";
+    return {
+      available: false,
+      reason: isHttpFromApk
+        ? `Android WebView blocked http:// from https://localhost (${msg}). Use an https:// tunnel URL or run ComfyUI with --enable-cors-header "*"`
+        : `Cannot reach ComfyUI at ${base} (${msg}). Start ComfyUI with --listen --enable-cors-header "*"`,
+    };
+  }
+}
+
+export async function generateComfySceneVideo(
+  prompt: string,
+  _sceneId: string,
+  referenceImageUrl?: string,
+  onProgress?: (msg: string) => void
+): Promise<string> {
+  const base = readComfyUrl();
+  if (!base) {
+    throw new Error("No ComfyUI worker URL saved. Paste your https:// ComfyUI URL first.");
+  }
+
+  const config = loadComfyWorkflow();
+  const workflow = JSON.parse(JSON.stringify(config.workflow)) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+  if (!workflow[config.promptNodeId]?.inputs) {
+    throw new Error(`Prompt node "${config.promptNodeId}" was not found in the ComfyUI workflow.`);
+  }
+  workflow[config.promptNodeId].inputs.text = prompt;
+
+  if (config.imageNodeId && workflow[config.imageNodeId]?.inputs && referenceImageUrl) {
+    onProgress?.("Uploading character/scene reference image to ComfyUI...");
+    const uploadedName = await uploadReferenceImageToComfy(base, referenceImageUrl);
+    workflow[config.imageNodeId].inputs.image = uploadedName;
+  }
+
+  onProgress?.("Submitting scene to ComfyUI...");
+  const queueRes = await fetch(`${base}/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: workflow }),
+  });
+
+  if (!queueRes.ok) {
+    const errText = await queueRes.text().catch(() => "");
+    throw new Error(`ComfyUI rejected workflow (${queueRes.status}): ${errText.slice(0, 160)}`);
+  }
+
+  const queued = (await queueRes.json()) as { prompt_id?: string };
+  if (!queued.prompt_id) throw new Error("ComfyUI did not return a prompt_id.");
+
+  onProgress?.("ComfyUI rendering video on GPU...");
+  return await pollComfyHistory(base, queued.prompt_id);
+}
+
+async function uploadReferenceImageToComfy(base: string, imageUrl: string): Promise<string> {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error("Could not read reference image.");
+  const blob = await res.blob();
+  const form = new FormData();
+  form.append("image", blob, "bharat_ref.png");
+
+  const uploadRes = await fetch(`${base}/upload/image`, { method: "POST", body: form });
+  if (!uploadRes.ok) throw new Error(`ComfyUI image upload failed (${uploadRes.status}).`);
+  const payload = (await uploadRes.json()) as { name?: string };
+  if (!payload.name) throw new Error("ComfyUI did not return an uploaded filename.");
+  return payload.name;
+}
+
+async function pollComfyHistory(base: string, promptId: string): Promise<string> {
+  for (let i = 0; i < 90; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`${base}/history/${encodeURIComponent(promptId)}`);
+    if (!res.ok) continue;
+    const history = (await res.json()) as Record<string, { outputs?: Record<string, { gifs?: Array<{ filename: string; subfolder?: string; type?: string }>; videos?: Array<{ filename: string; subfolder?: string; type?: string }>; images?: Array<{ filename: string; subfolder?: string; type?: string }> }> }>;
+    const outputs = history[promptId]?.outputs;
+    if (!outputs) continue;
+
+    for (const nodeOutput of Object.values(outputs)) {
+      const artifact = nodeOutput.videos?.[0] || nodeOutput.gifs?.[0] || nodeOutput.images?.[0];
+      if (artifact?.filename) {
+        const params = new URLSearchParams({
+          filename: artifact.filename,
+          subfolder: artifact.subfolder || "",
+          type: artifact.type || "output",
+        });
+        return `${base}/view?${params.toString()}`;
+      }
+    }
+  }
+  throw new Error("Timed out waiting for ComfyUI to finish rendering.");
+}
