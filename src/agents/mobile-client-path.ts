@@ -121,3 +121,19 @@ export function shouldLoadFaceLandmarks(): boolean {
   if (!report.capabilities.wasm) return false;
   return true;
 }
+const DEFAULT_PUBLIC_BACKEND_URL = "https://bharat-ai-chi.vercel.app";
+
+export function readBackendBaseUrl(): string {
+  try {
+    const stored =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem("bharat_backend_url") || ""
+        : "";
+    const envUrl =
+      (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_BACKEND_URL || "";
+    const raw = (stored.trim() || envUrl.trim() || DEFAULT_PUBLIC_BACKEND_URL);
+    return raw.replace(/\/+$/, "");
+  } catch {
+    return DEFAULT_PUBLIC_BACKEND_URL;
+  }
+}
