@@ -2,6 +2,10 @@
 
 Status: architecture decision and integration registry. Listing a project here does not mean its code, weights, or runtime have been installed.
 
+git clone git@github.com:bharatnavkalkhand/Bharat-AI.git
+cd Bharat-AI
+git switch local-media-stack
+git pull origin local-media-stack
 ## Design rules
 
 - Keep the React/Vite app as the control plane; never run large diffusion inference in Vercel functions.
