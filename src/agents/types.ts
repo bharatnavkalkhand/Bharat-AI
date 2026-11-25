@@ -48,6 +48,7 @@ export interface AgentRunInput {
     useCloudLlm?: boolean;
     aiMode?: "free" | "paid";
     textProvider?: "browser" | "groq" | "mistral" | "omniroute";
+    videoProvider?: "public-free" | "comfyui";
     workerUrl?: string;
     voiceGender?: "auto" | "male" | "female";
     narratorVoiceId?: string;
