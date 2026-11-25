@@ -6,6 +6,8 @@ Mobile-first AI **prompt-to-media studio** for Indian users. Design goal: **₹0
 **Free generator:** https://bharat-ai-chi.vercel.app/generate  
 **Repo:** https://github.com/bharatnavkalkhand/Bharat-AI
 
+**AI provider modes:** [Free / Paid AI settings](/ai-providers) · [Provider setup and safety](./docs/AI_PROVIDER_MODES.md)  
+
 **DramaClaw bridge:** [Connect a self-hosted DramaClaw instance](/dramaclaw) · [Integration notes](./docs/DRAMACLAW_INTEGRATION.md)  
 
 **Design system:** [DESIGN.md](./DESIGN.md) · **Zero-cost render architecture:** [docs/zero-cost-rendering-plan.md](./docs/zero-cost-rendering-plan.md) · **Generative media stack:** [docs/GENERATIVE_MEDIA_STACK.md](./docs/GENERATIVE_MEDIA_STACK.md) · **Android companion:** [docs/ANDROID_COMPANION.md](./docs/ANDROID_COMPANION.md)
