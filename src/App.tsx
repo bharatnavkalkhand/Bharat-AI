@@ -4,11 +4,17 @@ import { CreateMoviePage } from "./pages/CreateMoviePage";
 import { MovieWorkspacePage } from "./pages/MovieWorkspacePage";
 import { ProducePage } from "./pages/ProducePage";
 import { GeneratePage } from "./pages/GeneratePage";
+import { DramaClawPage } from "./pages/DramaClawPage";
+import { AiProvidersPage } from "./pages/AiProvidersPage";
+import { Link } from "react-router-dom";
 
 export default function App() {
   return (
     <div className="min-h-dvh bg-bg text-fg">
+      <div className="fixed bottom-3 right-3 z-50 flex gap-2"><Link to="/ai-providers" className="rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold shadow-lg">AI Modes</Link><Link to="/dramaclaw" className="rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold shadow-lg">DramaClaw ↗</Link></div>
       <Routes>
+        <Route path="/dramaclaw" element={<DramaClawPage />} />
+        <Route path="/ai-providers" element={<AiProvidersPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/generate" element={<GeneratePage />} />
         <Route path="/create" element={<CreateMoviePage />} />

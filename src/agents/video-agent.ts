@@ -82,7 +82,7 @@ export async function runVideoAgent(
   // Prefer the in-app ComfyUI generation path when a local worker is configured.
   // This submits scene prompts directly to the generation worker; it does not ask
   // the user to download and attach finished videos from another website.
-  const comfyUrl = getComfyUiUrl();
+  const comfyUrl = input.options?.videoProvider === "comfyui" ? getComfyUiUrl() : "";
   if (comfyUrl) {
     const worker = createComfyUiWorker({ baseUrl: comfyUrl, mode: "auto" });
     const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
@@ -143,6 +143,16 @@ export async function runVideoAgent(
       status: "failed",
       message: `Bharat AI could not generate a video through ComfyUI: ${failures[0] || "No clip returned"}. Check that the ComfyUI generation bridge is running and has a valid Wan video workflow.`,
       data: { board, mode: "generation-error", workerError: failures[0] },
+      durationMs: performance.now() - t0,
+    };
+  }
+
+  if (input.options?.videoProvider === "comfyui") {
+    return {
+      agentId: "video",
+      status: "failed",
+      message: "ComfyUI was selected, but no ComfyUI worker URL is configured. Add and test your ComfyUI URL in Comfy Image Studio.",
+      data: { board, mode: "comfyui-not-configured" },
       durationMs: performance.now() - t0,
     };
   }

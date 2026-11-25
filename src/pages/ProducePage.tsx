@@ -21,6 +21,8 @@ import {
 import { cn } from "@/lib/utils";
 import { VideoWorkflowStudio } from "@/components/VideoWorkflowStudio";
 import { ComfyImageStudio } from "@/components/ComfyImageStudio";
+import { loadAiProviderSettings } from "@/lib/ai-provider-settings";
+import { runGrokImagineAgent } from "@/agents/grok-imagine-agent";
 
 function appHostedVideoUrl(url: string, download = false): string {
   const query = new URLSearchParams({ url });
@@ -203,6 +205,7 @@ export function ProducePage() {
     stopRef.current.stopped = true;
     if (workerUrl.trim()) localStorage.setItem("bharat_video_worker_url", workerUrl.trim());
 
+    const aiSettings = loadAiProviderSettings();
     const result = await runMoviePipeline(
       {
         movieId, title: movie.title, synopsis: movie.synopsis || "", language: movie.language,
@@ -215,7 +218,13 @@ export function ProducePage() {
         characters: movie.characters.map((c) => ({
           id: c.id, name: c.name, role: c.role, appearance: c.appearance,
         })),
-        options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined },
+        options: {
+          useCloudLlm: aiSettings.textProvider !== "browser",
+          aiMode: aiSettings.mode,
+          textProvider: aiSettings.textProvider,
+          videoProvider: aiSettings.videoProvider,
+          workerUrl: workerUrl.trim() || undefined,
+        },
       },
       { script: doScript, voice: doVoice, video: doVideo },
       {
@@ -249,10 +258,10 @@ export function ProducePage() {
       if (!headline) setHeadline(result.script.logline?.slice(0, 80) || movie.title);
       try {
         const after = useMovieStore.getState().movies.find((m) => m.id === movieId);
-        const fills = await runWebImageAgent({
+        const imageInput = {
           title: result.script.title || movie.title,
           language: movie.language,
-          layout: dualScreen ? "dual" : "single",
+          layout: dualScreen ? "dual" as const : "single" as const,
           scenes: result.script.scenes.map((sc, order) => ({
             id: `tmp-${order}`, order, title: sc.title, mood: sc.mood,
             dialogue: sc.dialogue, narration: sc.narration, visualPrompt: sc.visualPrompt,
@@ -263,7 +272,10 @@ export function ProducePage() {
             referenceImageLocal: c.referenceImageLocal, referenceImageUrl: c.referenceImageUrl,
           })),
           onProgress: setStatus,
-        });
+        };
+        const fills = aiSettings.mode === "paid" && aiSettings.imageProvider === "grok-imagine"
+          ? await runGrokImagineAgent(imageInput)
+          : await runWebImageAgent(imageInput);
         const updated = useMovieStore.getState().movies.find((m) => m.id === movieId);
         const sorted = (updated?.scenes || []).slice().sort((a, b) => a.order - b.order);
         fills.fills.forEach((f, i) => {
