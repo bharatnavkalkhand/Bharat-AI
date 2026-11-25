@@ -46,6 +46,8 @@ export interface AgentRunInput {
   }>;
   options?: {
     useCloudLlm?: boolean;
+    aiMode?: "free" | "paid";
+    textProvider?: "browser" | "groq" | "mistral" | "omniroute";
     workerUrl?: string;
     voiceGender?: "auto" | "male" | "female";
     narratorVoiceId?: string;
