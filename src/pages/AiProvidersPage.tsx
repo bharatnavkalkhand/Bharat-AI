@@ -95,7 +95,7 @@ export function AiProvidersPage() {
       <section className={cardClass}>
         <div className="mb-3 flex items-center gap-2"><Settings2 className="h-5 w-5 text-accent" /><h2 className="font-semibold">{lang === "hi" ? "जनरेशन मोड" : "Generation mode"}</h2></div>
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => { update("mode", "free"); update("textProvider", "browser"); update("imageProvider", "pollinations"); }} className={`rounded-xl border p-3 text-left ${settings.mode === "free" ? "border-accent bg-accent/10" : "border-border"}`}><span className="block font-semibold">{c.free}</span><span className="mt-1 block text-xs text-muted">{c.freeDesc}</span></button>
+          <button type="button" onClick={() => { update("mode", "free"); update("textProvider", "browser"); update("imageProvider", "pollinations"); update("videoProvider", "public-free"); }} className={`rounded-xl border p-3 text-left ${settings.mode === "free" ? "border-accent bg-accent/10" : "border-border"}`}><span className="block font-semibold">{c.free}</span><span className="mt-1 block text-xs text-muted">{c.freeDesc}</span></button>
           <button type="button" onClick={() => update("mode", "paid")} className={`rounded-xl border p-3 text-left ${settings.mode === "paid" ? "border-accent bg-accent/10" : "border-border"}`}><span className="block font-semibold">{c.paid}</span><span className="mt-1 block text-xs text-muted">{c.paidDesc}</span></button>
         </div>
         <p className="mt-3 text-xs text-muted">{c.modeNotice}</p>
