@@ -111,3 +111,8 @@ Official limits and caveats:
 5. Run one short, low-resolution video-generation job only if the selected model fits the detected VRAM.
 6. Verify the output file exists, is non-empty, reports MP4 MIME/container, and plays; then download it.
 7. Record model, GPU, generation time, resolution, duration, and any quota/error. Do not mark the Bharat AI video adapter as connected based on GPU detection alone.
+git switch -c <feature-branch> local-media-stack
+# edit files
+git add .
+git commit -m "Add local media stack"
+git push -u origin <feature-branch>
