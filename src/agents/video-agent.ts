@@ -147,6 +147,16 @@ export async function runVideoAgent(
     };
   }
 
+  if (input.options?.videoProvider === "comfyui") {
+    return {
+      agentId: "video",
+      status: "failed",
+      message: "ComfyUI was selected, but no ComfyUI worker URL is configured. Add and test your ComfyUI URL in Comfy Image Studio.",
+      data: { board, mode: "comfyui-not-configured" },
+      durationMs: performance.now() - t0,
+    };
+  }
+
   // Zero-setup default: use the public community LTX-Video ZeroGPU demo.
   // This is LTX-Video (not the much larger official LTX-2 model). It is a
   // shared, best-effort demo and currently returns short silent clips only.
