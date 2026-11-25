@@ -55,6 +55,7 @@ export async function runMoviePipeline(
     cb?.onStage?.("script", "running", "Script Agent writing…");
     try {
       let usedCloud = false;
+      let cloudFailure = "";
       if (input.options?.useCloudLlm) {
         try {
           const res = await fetch("/api/agents/script", {
@@ -63,14 +64,15 @@ export async function runMoviePipeline(
             body: JSON.stringify({ ...input, provider: input.options?.textProvider, aiMode: input.options?.aiMode }),
           });
           if (res.ok) {
-            const data = (await res.json()) as { script?: ScriptOutput };
+            const data = (await res.json()) as { script?: ScriptOutput; providerBlocked?: boolean; message?: string };
+            if (data.providerBlocked) throw new Error(data.message || "Selected AI provider is not available.");
             if (data.script) {
               scriptOut = data.script;
               usedCloud = true;
             }
           }
-        } catch {
-          /* fall back */
+        } catch (error) {
+          cloudFailure = error instanceof Error ? error.message : "Selected cloud provider failed.";
         }
       }
       if (!scriptOut) {
@@ -84,7 +86,9 @@ export async function runMoviePipeline(
       pipeline.script = "succeeded";
       pipeline.lastMessage = usedCloud
         ? `Script Agent (${input.options?.textProvider || "cloud"} provider) done`
-        : "Script Agent (browser free engine) done";
+        : cloudFailure
+          ? `${cloudFailure} Browser fallback used.`
+          : "Script Agent (browser free engine) done";
       cb?.onStage?.("script", "succeeded", pipeline.lastMessage);
     } catch (e) {
       pipeline.script = "failed";
