@@ -60,7 +60,7 @@ export async function runMoviePipeline(
           const res = await fetch("/api/agents/script", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(input),
+            body: JSON.stringify({ ...input, provider: input.options?.textProvider, aiMode: input.options?.aiMode }),
           });
           if (res.ok) {
             const data = (await res.json()) as { script?: ScriptOutput };
@@ -83,7 +83,7 @@ export async function runMoviePipeline(
       }
       pipeline.script = "succeeded";
       pipeline.lastMessage = usedCloud
-        ? "Script Agent (cloud free-tier) done"
+        ? `Script Agent (${input.options?.textProvider || "cloud"} provider) done`
         : "Script Agent (browser free engine) done";
       cb?.onStage?.("script", "succeeded", pipeline.lastMessage);
     } catch (e) {
