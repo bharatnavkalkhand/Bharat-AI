@@ -82,7 +82,7 @@ export async function runVideoAgent(
   // Prefer the in-app ComfyUI generation path when a local worker is configured.
   // This submits scene prompts directly to the generation worker; it does not ask
   // the user to download and attach finished videos from another website.
-  const comfyUrl = getComfyUiUrl();
+  const comfyUrl = input.options?.videoProvider === "comfyui" ? getComfyUiUrl() : "";
   if (comfyUrl) {
     const worker = createComfyUiWorker({ baseUrl: comfyUrl, mode: "auto" });
     const sortedScenes = [...input.scenes].sort((a, b) => a.order - b.order);
