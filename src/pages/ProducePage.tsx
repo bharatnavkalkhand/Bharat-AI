@@ -120,6 +120,7 @@ export function ProducePage() {
     () => (typeof localStorage !== "undefined" && localStorage.getItem("bharat_video_worker_url")) || "",
   );
   const [doScript, setDoScript] = useState(true);
+  const [llmMode, setLlmMode] = useState<"free" | "paid">("free");
   const [doVoice, setDoVoice] = useState(false);
   const [doVideo, setDoVideo] = useState(true);
   const [dualScreen, setDualScreen] = useState(true);
@@ -215,7 +216,7 @@ export function ProducePage() {
         characters: movie.characters.map((c) => ({
           id: c.id, name: c.name, role: c.role, appearance: c.appearance,
         })),
-        options: { useCloudLlm: true, workerUrl: workerUrl.trim() || undefined },
+        options: { useCloudLlm: true, llmMode, workerUrl: workerUrl.trim() || undefined },
       },
       { script: doScript, voice: doVoice, video: doVideo },
       {
@@ -430,6 +431,25 @@ export function ProducePage() {
           setGeneratedClips([{ sceneId, title: "Generated scene", videoUrl, durationSec: 4 }]);
         }}
       />
+
+      <section className="mb-4 rounded-xl border border-border bg-card p-3 text-xs">
+        <p className="mb-2 font-semibold">AI model mode</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" aria-pressed={llmMode === "free"} onClick={() => setLlmMode("free")}
+            className={cn("rounded-lg border px-3 py-2 text-left", llmMode === "free" ? "border-emerald-500 bg-emerald-500/10 text-emerald-300" : "border-border text-muted")}>
+            <span className="block font-semibold">FREE MODE</span>
+            <span className="mt-0.5 block text-[10px]">Free models only · local fallback</span>
+          </button>
+          <button type="button" aria-pressed={llmMode === "paid"} onClick={() => setLlmMode("paid")}
+            className={cn("rounded-lg border px-3 py-2 text-left", llmMode === "paid" ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-border text-muted")}>
+            <span className="block font-semibold">PAID MODE</span>
+            <span className="mt-0.5 block text-[10px]">Only if enabled by server owner</span>
+          </button>
+        </div>
+        <p className="mt-2 leading-relaxed text-muted">
+          FREE is selected by default and cannot call paid models. PAID requires ALLOW_PAID_PROVIDERS=true on the server; otherwise it safely uses the local engine.
+        </p>
+      </section>
 
       <section className="mb-4 rounded-xl border border-border bg-card p-3 text-xs">
         <p className="mb-2 font-semibold">Pipeline stages</p>

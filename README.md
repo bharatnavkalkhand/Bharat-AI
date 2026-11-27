@@ -59,6 +59,9 @@ Script Agent → Voice Agent → Video Agent
 
 ### LLM routing (optional, free-tier friendly)
 
+The Script Agent supports OpenRouter as its primary model gateway. Set `OPENROUTER_API_KEY`; `OPENROUTER_FREE_MODEL` defaults to `openrouter/free`. FREE mode accepts only `openrouter/free` or a model ID ending in `:free`, then may fall back to Groq only when `GROQ_FREE_TIER_ENABLED=true` is explicitly set by the owner, and otherwise uses the browser engine. It never calls paid OmniRoute or Mistral models. PAID mode requires the user's explicit selection and `ALLOW_PAID_PROVIDERS=true` on the server; set `OPENROUTER_MODEL` for the paid OpenRouter model. All keys stay in server-side environment variables.
+
+
 Server-side Script Agent can use OmniRoute → Groq → browser engine. Keys stay in Vercel env only:
 
 - `OMNIROUTE_BASE_URL`, `OMNIROUTE_API_KEY`, `OMNIROUTE_MODEL` (optional)
