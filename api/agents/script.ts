@@ -12,14 +12,14 @@ type ScriptBody = {
   language?: string;
   targetDuration?: string;
   genres?: string[];
-  llmMode?: "free" | "paid";
+  options?: { llmMode?: "free" | "paid" };
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const body = (req.body || {}) as ScriptBody;
-  const mode = body.llmMode === "paid" ? "paid" : "free";
+  const mode = body.options?.llmMode === "paid" ? "paid" : "free";
   const paidEnabled = process.env.ALLOW_PAID_PROVIDERS === "true";
 
   if (mode === "paid" && !paidEnabled) {
