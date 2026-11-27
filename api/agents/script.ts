@@ -123,8 +123,8 @@ mood must be one of: fight, romance, gesture, dialogue, action, emotional, drama
       }
     }
 
-    // Groq developer free tier is permitted in either mode; it is never a paid fallback.
-    if (!response?.ok && groqKey) {
+    // In FREE mode, Groq is used only when the owner explicitly confirms this key is on its free tier.
+    if (!response?.ok && groqKey && (mode === "paid" || process.env.GROQ_FREE_TIER_ENABLED === "true")) {
       try {
         response = await requestModel("https://api.groq.com/openai/v1/chat/completions", groqKey, "llama-3.3-70b-versatile");
         if (response.ok) provider = "groq-free-tier";
